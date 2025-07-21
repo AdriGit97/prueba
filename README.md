@@ -108,3 +108,53 @@ METHOD zcreate_ovs_filtro_carrid .
 
   ENDCASE.
 ENDMETHOD.
+
+***
+METHOD wddoinit .
+
+  DATA: lo_cmp_usage       TYPE REF TO if_wd_component_usage,
+        lo_salv_wd_table   TYPE REF TO iwci_salv_wd_table,
+        lo_column_settings TYPE REF TO if_salv_wd_column_settings,
+        lo_column          TYPE REF TO cl_salv_wd_column,
+        lt_column          TYPE salv_wd_t_column_ref,
+        ls_column          TYPE salv_wd_s_column_ref,
+        lo_column_header   TYPE REF TO cl_salv_wd_column_header,
+        lr_config          TYPE REF TO cl_salv_wd_config_table,
+        lr_input_field     TYPE REF TO cl_salv_wd_uie_input_field,
+        l_table            TYPE salv_t_column_ref.
+
+*    Creamos el componente ALV
+  lo_cmp_usage = wd_this->wd_cpuse_alv_table( ).
+
+  " Si no está creado, lo creamos
+  IF lo_cmp_usage->has_active_component( ) IS INITIAL.
+    lo_cmp_usage->create_component( ).
+  ENDIF.
+
+  " Recuperamos el componente ALV
+  lo_salv_wd_table = wd_this->wd_cpifc_alv_table( ).
+  lr_config = lo_salv_wd_table->get_model( ).
+  lr_config->if_salv_wd_table_settings~set_cell_action_event_enabled( abap_true ).
+  lo_salv_wd_table->get_model( )->if_salv_wd_table_settings~set_visible_row_count( '30' ).
+  lo_column_settings ?= lo_salv_wd_table->get_model( ).
+
+  " Recuperamos las columnas
+  lt_column = lo_column_settings->get_columns( ).
+
+  LOOP AT lt_column INTO ls_column.
+    lo_column = lr_config->if_salv_wd_column_settings~get_column( id = ls_column-id ).
+    CASE ls_column-id.
+      WHEN 'CARRID'.
+        ls_column-r_column->set_cell_editor( value = lr_input_field ).
+        lr_input_field->set_read_only_fieldname( value = 'EDIT' ).
+
+      WHEN 'CONNID'.
+        ls_column-r_column->set_cell_editor( value = lr_input_field ).
+        lr_input_field->set_read_only_fieldname( value = 'EDIT' ).
+
+      WHEN 'PLANETYPE'.
+        ls_column-r_column->set_cell_editor( value = lr_input_field ).
+        lr_input_field->set_read_only_fieldname( value = 'EDIT' ).
+    ENDCASE.
+  ENDLOOP.
+ENDMETHOD.
