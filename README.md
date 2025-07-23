@@ -158,3 +158,68 @@ METHOD wddoinit .
     ENDCASE.
   ENDLOOP.
 ENDMETHOD.
+
+-----------
+METHOD onactiongrabar .
+  DATA: lt_datos_edit           TYPE TABLE OF sflight,
+        ls_dato                 TYPE sflight,
+        lo_nd_datos             TYPE REF TO if_wd_context_node,
+        lo_nd_datos_edit        TYPE REF TO if_wd_context_node,
+        lv_msg                  TYPE string,
+        ls_existente            TYPE sflight,
+        lo_cmp_usage            TYPE REF TO if_wd_component_usage,
+        lo_interface_controller TYPE REF TO iwci_salv_wd_table.
+
+* Obtener instancia del componente ALV
+  lo_cmp_usage = wd_this->wd_cpuse_alv_table( ).
+  IF lo_cmp_usage->has_active_component( ) IS INITIAL.
+    lo_cmp_usage->create_component( ).
+  ENDIF.
+
+  lo_interface_controller = wd_this->wd_cpifc_alv_table( ).
+
+* Leer los datos del contexto
+  lo_nd_datos = wd_context->get_child_node( name = wd_this->wdctx_datos_edit ).
+
+*  " Volver a la vista principal
+  wd_this->fire_out_vista_sec_back_plg( ).
+
+* validar y grabar
+  LOOP AT lt_datos_edit INTO ls_dato.
+
+* validar campos obligatorios
+    IF ls_dato-carrid IS INITIAL OR
+       ls_dato-connid IS INITIAL OR
+       ls_dato-fldate IS INITIAL.
+      lv_msg = |Faltan campos obligatorios en línea { sy-tabix }|.
+      MESSAGE lv_msg TYPE 'E'.
+      EXIT.
+    ENDIF.
+
+* verificar si el registro ya existe en sflight
+    SELECT SINGLE *
+            FROM sflight
+      INTO @ls_existente
+      WHERE carrid EQ @ls_dato-carrid
+        AND connid EQ @ls_dato-connid
+        AND fldate EQ @ls_dato-fldate.
+
+    IF sy-subrc = 0.
+      lv_msg = |Ya existe un vuelo con misma clave en línea { sy-tabix }|.
+      MESSAGE lv_msg TYPE 'E'.
+      EXIT.
+    ENDIF.
+
+* insertar nuevo registro
+    INSERT sflight FROM ls_dato.
+    IF sy-subrc <> 0.
+      lv_msg = |Error al insertar en línea { sy-tabix }|.
+      MESSAGE lv_msg TYPE 'E'.
+      EXIT.
+    ENDIF.
+
+  ENDLOOP.
+
+  COMMIT WORK AND WAIT.
+
+ENDMETHOD.
