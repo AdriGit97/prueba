@@ -272,3 +272,111 @@ METHOD onactiongrabar .
   " Volver a la vista principal
   wd_this->fire_out_vista_sec_back_plg( ).
 ENDMETHOD.
+
+----------------
+METHOD onactionbutton_buscar .
+  DATA: lc_mensaje_error      TYPE string VALUE 'Es necesario rellenar algun campo para filtrar',
+        lc_mensaje_error_filt TYPE string VALUE 'No hay datos'.
+
+
+* Búsqueda por filtros
+  DATA: lo_nd_datos            TYPE REF TO if_wd_context_node,
+        lo_nd_datos_mod        TYPE REF TO if_wd_context_node,
+        lo_nd_el_datos         TYPE REF TO if_wd_context_element,
+        lo_nd_el_datos_mod     TYPE REF TO if_wd_context_element,
+        ls_datos               TYPE wd_this->elements_datos,
+        lt_selecccion_elements TYPE wdr_context_element_set.
+
+**** NODO DE DATOS ****
+*  Obtenemos el nombre del nodo de datos, el valor del elemento y atributos
+  lo_nd_datos = wd_context->get_child_node( name = wd_this->wdctx_datos ).
+  lo_nd_el_datos = lo_nd_datos->get_element( ).
+
+**** NODO DE FILTROS ****
+*  " Obtenemos el nombre del nodo de filtros, elementos y atributos
+  DATA(lo_nd_filtros) = wd_context->get_child_node( name = wd_this->wdctx_filtros ).
+  DATA(ls_filtros) = VALUE wd_this->element_filtros( ).
+
+  lo_nd_filtros->get_static_attributes( IMPORTING static_attributes = ls_filtros ).
+
+  IF ls_filtros-carrid IS INITIAL AND
+     ls_filtros-connid IS INITIAL AND
+     ls_filtros-planetype IS INITIAL.
+    " Mensaje de error: Es necesario rellenar algun campo del filtro
+    wd_this->wd_get_api( )->get_message_manager( )->report_error_message( lc_mensaje_error ).
+  ENDIF.
+
+
+*  " SELECCIONES DE DATOS PARA LOS FILTROS
+  IF ls_filtros-carrid IS NOT INITIAL AND
+     ls_filtros-connid IS INITIAL .
+
+    SELECT *
+      FROM sflight
+      INTO TABLE @DATA(lt_sf_carrid)
+      WHERE carrid EQ @ls_filtros-carrid.
+    IF sy-subrc EQ 0.
+      lo_nd_datos->bind_table( new_items = lt_sf_carrid set_initial_elements = abap_true ).
+    ENDIF.
+  ENDIF.
+
+  IF ls_filtros-carrid IS NOT INITIAL AND
+     ls_filtros-connid IS NOT INITIAL.
+
+    SELECT *
+      FROM sflight
+      INTO TABLE @DATA(lt_sf_carr_conn)
+      WHERE carrid EQ @ls_filtros-carrid AND
+            connid EQ @ls_filtros-connid.
+
+    IF sy-subrc EQ 0.
+      lo_nd_datos->bind_table( new_items = lt_sf_carr_conn set_initial_elements = abap_true ).
+    ENDIF.
+
+  ENDIF.
+
+
+  IF ls_filtros-carrid IS NOT INITIAL AND
+     ls_filtros-connid IS NOT INITIAL AND
+     ls_filtros-planetype IS NOT INITIAL.
+
+    SELECT *
+      FROM sflight
+      INTO TABLE @DATA(lt_sf_carr_conn_plan)
+      WHERE carrid EQ @ls_filtros-carrid AND
+            connid EQ @ls_filtros-connid AND
+            planetype EQ @ls_filtros-planetype.
+
+    IF sy-subrc EQ 0.
+      lo_nd_datos->bind_table( new_items = lt_sf_carr_conn_plan set_initial_elements = abap_true ).
+    ENDIF.
+  ENDIF.
+
+
+
+***** BUSCAR TODA LA TABLA EJERCICIO ANTERIOR:
+  " Para buscar toda la tabla.
+*  DATA: lo_nd_zwd_formacion_nodo TYPE REF TO if_wd_context_node,
+*        lo_el_zwd_formacion_nodo TYPE REF TO if_wd_context_element,
+*        lo_node_alv              TYPE REF TO if_wd_context_node.
+*        lt_buscar_datos          TYPE TABLE OF wd_this->element_zwd_formacion_nodo.
+*
+*  " Obtenemos el nodo
+*  lo_nd_zwd_formacion_nodo = wd_context->get_child_node( name = wd_this->wdctx_zwd_formacion_nodo ).
+
+*  " Seleccionamos los datos de sflight
+*  SELECT *
+*    FROM sflight
+*    INTO TABLE lt_buscar_datos.
+*
+*  IF lo_nd_zwd_formacion_nodo IS BOUND.
+*    " Pasar los datos al ALV
+*    lo_nd_zwd_formacion_nodo->bind_table( new_items = lt_buscar_datos set_initial_elements = abap_true ).
+*  ENDIF.
+*
+*  " Obtener el nodo del ALV
+*  lo_node_alv = wd_context->get_child_node( name = wd_this->wdctx_zwd_filtros ).
+
+  " Limpiar datos previos
+*  lo_node_alv->invalidate( ).
+ENDMETHOD.
