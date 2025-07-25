@@ -411,3 +411,35 @@ METHOD onactionbutton_modif .
   wd_comp_controller->get_node_->invalidate( ).
   " Moverse entre vistas
   wd_this->fire_out_vista_sec_plg( ).
+  -----
+  METHOD onactionbutton_borrar .
+
+  DATA: lo_node  TYPE REF TO if_wd_context_node,
+        lt_datos TYPE STANDARD TABLE OF sflight,
+        lv_index TYPE i.
+
+  DATA: lt_text TYPE string_table,
+        lv_text TYPE string.
+
+  " Obtener el nodo de datos del ALV
+  lo_node = wd_context->get_child_node( name = wd_this->wdctx_datos ).
+
+  " Obtener los registros seleccionados
+  DATA(lt_sel_elements) = lo_node->get_selected_elements( ).
+
+  " Obtener todos los datos actuales del ALV
+  lo_node->get_static_attributes_table( IMPORTING table = lt_datos ).
+
+  IF lt_sel_elements IS NOT INITIAL.
+
+    LOOP AT lt_sel_elements INTO DATA(lo_sel).
+      lv_index = lo_sel->get_index( ).
+      DELETE lt_datos INDEX lv_index.
+    ENDLOOP.
+
+  ENDIF.
+
+  " Reenlazar en tabla
+  lo_node->bind_table( lt_datos ).
+
+ENDMETHOD.
