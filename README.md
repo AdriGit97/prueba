@@ -443,3 +443,93 @@ METHOD onactionbutton_modif .
   lo_node->bind_table( lt_datos ).
 
 ENDMETHOD.
+-----------
+METHOD onactionbutton_borrar .
+
+*  DATA: lo_node  TYPE REF TO if_wd_context_node,
+*        lt_datos TYPE STANDARD TABLE OF sflight,
+*        lv_index TYPE i.
+*
+*  DATA: lt_text TYPE string_table,
+*        lv_text TYPE string.
+*
+*  " Obtener el nodo de datos del ALV
+*  lo_node = wd_context->get_child_node( name = wd_this->wdctx_datos ).
+*
+*  " Obtener los registros seleccionados
+*  DATA(lt_sel_elements) = lo_node->get_selected_elements( ).
+*
+*  " Obtener todos los datos actuales del ALV
+*  lo_node->get_static_attributes_table( IMPORTING table = lt_datos ).
+*
+*  IF lt_sel_elements IS NOT INITIAL.
+*
+*    LOOP AT lt_sel_elements INTO DATA(lo_sel).
+*      lv_index = lo_sel->get_index( ).
+*      DELETE lt_datos INDEX lv_index.
+*    ENDLOOP.
+*
+*  ENDIF.
+*
+*  " Reenlazar en tabla
+*  lo_node->bind_table( lt_datos ).
+
+  DATA: lo_node         TYPE REF TO if_wd_context_node,
+        lt_datos        TYPE STANDARD TABLE OF sflight,
+        lv_index        TYPE i,
+        lt_text         TYPE string_table,
+        lv_text         TYPE string,
+        lv_alias_text   TYPE string,
+        lv_count        TYPE i,
+        lo_window       TYPE REF TO if_wd_window,
+        lo_window_mgr   TYPE REF TO if_wd_window_manager,
+        lo_cmp_api      TYPE REF TO if_wd_component,
+        lo_sel          TYPE REF TO if_wd_context_element,
+        lt_sel_elements TYPE wdr_context_element_set.
+
+  " Obtener el nodo de datos del ALV
+  lo_node = wd_context->get_child_node( name = wd_this->wdctx_datos ).
+
+  " Obtener elementos seleccionados
+  lt_sel_elements = lo_node->get_selected_elements( ).
+  lv_count = lines( lt_sel_elements ).
+
+  IF lv_count = 0.
+    " Si no hay selección, mostramos mensaje
+    MESSAGE 'No ha seleccionado la linea' TYPE 'I'.
+    RETURN.
+  ENDIF.
+
+  DATA(lv_count_text) = |{ lv_count }|.
+  CONCATENATE 'Está a punto de eliminar' lv_count_text 'línia/es. Desea continuar?' INTO lv_text SEPARATED BY space.
+
+  " Obtener el API del componente y el gestor de ventanas
+  lo_cmp_api = wd_comp_controller->wd_get_api( ).
+  lo_window_mgr = lo_cmp_api->get_window_manager( ).
+
+  " Crear pop-up
+  CALL METHOD lo_window_mgr->create_popup_to_confirm
+    EXPORTING
+      text         = lt_text
+      button_kind  = if_wd_window=>co_buttons_yesno
+      message_type = if_wd_window=>co_msg_type_question
+      close_button = abap_false
+    RECEIVING
+      result       = lo_window.
+
+  " Botón SÍ
+  lo_window->subscribe_to_button_event(
+    button         = if_wd_window=>co_button_yes
+    action_name    = 'CONFIRMAR_BORRADO'
+    action_view    = wd_this->wd_get_api( )
+    is_default_button = abap_true ).
+
+  " Botón NO
+  lo_window->subscribe_to_button_event(
+    button         = if_wd_window=>co_button_no
+    action_name    = 'CANCELAR_BORRADO'
+    action_view    = wd_this->wd_get_api( ) ).
+
+  " Abrir ventana
+  lo_window->open( ).
+
