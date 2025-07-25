@@ -380,3 +380,34 @@ METHOD onactionbutton_buscar .
   " Limpiar datos previos
 *  lo_node_alv->invalidate( ).
 ENDMETHOD.
+---
+METHOD onactionbutton_modif .
+
+  DATA: lt_selected TYPE wdr_context_element_set,
+        lo_node     TYPE REF TO if_wd_context_node,
+        lo_element  TYPE REF TO if_wd_context_element,
+        ls_flight   TYPE sflight.
+
+  " Obtener el nodo de la tabla ALV principal
+  lo_node = wd_context->get_child_node( name = wd_this->wdctx_datos ).
+  lt_selected = lo_node->get_selected_elements( ).
+
+  " Validar si se ha seleccionado al menos una fila
+  IF lines( lt_selected ) EQ 0.
+    MESSAGE 'Seleccione al menos una línea para modificar' TYPE 'E'.
+    RETURN.
+  ENDIF.
+
+  " Limpiar datos previos del nodo de edicion
+  wd_context->get_child_node( name = wd_this->wdctx_datos_edit )->invalidate( ).
+
+  " Copiar los datos seleccionados a la vista de edición
+  LOOP AT lt_selected INTO lo_element.
+    lo_element->get_static_attributes( IMPORTING static_attributes = ls_flight ).
+    wd_context->get_child_node( name = wd_this->wdctx_datos_edit )->bind_element( new_item = ls_flight ).
+  ENDLOOP.
+  
+  " Limpiar nodo de la vista principal para que se recargue vacío
+  wd_comp_controller->get_node_->invalidate( ).
+  " Moverse entre vistas
+  wd_this->fire_out_vista_sec_plg( ).
