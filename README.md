@@ -626,3 +626,59 @@ ENDMETHOD.
 
   " Volver a la vista principal
   wd_this->fire_out_vista_sec_back_plg( ).
+
+--------
+ DATA: lo_node         TYPE REF TO if_wd_context_node,
+        lt_sel_elements TYPE wdr_context_element_set,
+        lv_count        TYPE i,
+        lt_text         TYPE string_table,
+        lv_line         TYPE string,
+        lo_window_mgr   TYPE REF TO if_wd_window_manager,
+        lo_cmp_api      TYPE REF TO if_wd_component,
+        lo_window       TYPE REF TO if_wd_window.
+
+  " Obtener nodo de datos del ALV
+  lo_node = wd_context->get_child_node( name = wd_this->wdctx_datos ).
+
+  " Obtener elementos seleccionados
+  lt_sel_elements = lo_node->get_selected_elements( ).
+  lv_count = lines( lt_sel_elements ).
+
+  " Si no hay selección
+  IF lv_count = 0.
+    MESSAGE 'No ha seleccionado la línea' TYPE 'I'.
+    RETURN.
+  ENDIF.
+
+  " Crear texto para mostrar en popup
+  lv_line = |Está a punto de eliminar { lv_count } línea/s. Desea continuar?|.
+  APPEND lv_line TO lt_text.
+
+  " Obtener la ventana del popUP
+  lo_cmp_api = wd_comp_controller->wd_get_api( ).
+  lo_window_mgr = lo_cmp_api->get_window_manager( ).
+
+  " Crear popup
+  CALL METHOD lo_window_mgr->create_popup_to_confirm
+    EXPORTING
+      text         = lt_text
+      button_kind  = if_wd_window=>co_buttons_yesno
+      message_type = if_wd_window=>co_msg_type_question
+      close_button = abap_false
+    RECEIVING
+      result       = lo_window.
+
+  " Confirgurar eventos botones SI y NO
+  lo_window->subscribe_to_button_event(
+    button        = if_wd_window=>co_button_yes
+    action_name   = 'CONFIRMAR_BORRADO'
+    action_view   = wd_this->wd_get_api( )
+    is_default_button = abap_true ).
+
+  lo_window->subscribe_to_button_event(
+    button        = if_wd_window=>co_button_no
+    action_name   = 'CANCELAR_BORRADO'
+    action_view   = wd_this->wd_get_api( ) ).
+
+  " Abrir ventana popup
+  lo_window->open( ).
