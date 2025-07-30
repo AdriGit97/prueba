@@ -898,3 +898,391 @@ ENDMETHOD.
   ENDLOOP.
 
 ENDMETHOD.
+
+---------------
+METHOD wddoinit .
+
+  DATA: lo_cmp_usage           TYPE REF TO if_wd_component_usage,
+        lo_salv_wd_table       TYPE REF TO iwci_salv_wd_table,
+        lo_column_settings     TYPE REF TO if_salv_wd_column_settings,
+        lo_column              TYPE REF TO cl_salv_wd_column,
+        lt_column              TYPE salv_wd_t_column_ref,
+        ls_column              TYPE salv_wd_s_column_ref,
+        lo_column_header       TYPE REF TO cl_salv_wd_column_header,
+        lr_config              TYPE REF TO cl_salv_wd_config_table,
+        lo_config              TYPE REF TO cl_salv_wd_config_table,
+        lo_input_field         TYPE REF TO cl_salv_wd_uie_input_field,
+        l_table                TYPE salv_t_column_ref,
+        lo_interfacecontroller TYPE REF TO iwci_salv_wd_table,
+        lr_column_settings     TYPE REF TO if_salv_wd_column_settings,
+        lt_columns             TYPE        salv_wd_t_column_ref,
+        lo_nd_data_modif       TYPE REF TO if_wd_context_node.
+
+  DATA: lv_modo_creacion TYPE abap_bool.
+
+  lv_modo_creacion = wd_comp_controller->modo_creacion.
+
+  " Creamos el componente ALV
+  lo_cmp_usage = wd_this->wd_cpuse_alv_edicion( ).
+
+  " Si no está creado, lo creamos
+  IF lo_cmp_usage->has_active_component( ) IS INITIAL.
+    lo_cmp_usage->create_component( ).
+  ENDIF.
+
+  " Recuperamos el componente ALV
+  lo_salv_wd_table = wd_this->wd_cpifc_alv_edicion( ).
+  lo_salv_wd_table->set_data( EXPORTING r_node_data = lo_nd_data_modif ).
+
+  lr_config = lo_salv_wd_table->get_model( ).
+  lr_config->if_salv_wd_table_settings~set_cell_action_event_enabled( abap_true ).
+  lr_config->if_salv_wd_table_settings~set_selection_mode( value = cl_wd_table=>e_selection_mode-none ).
+  lr_config->if_salv_wd_table_settings~set_read_only( abap_false ).
+  lr_config->if_salv_wd_table_settings~set_enabled( value = abap_true ).
+  lr_config->if_salv_wd_table_settings~set_cell_action_event_enabled( abap_true ).
+
+  " Obtener configuración de columnas
+  lr_column_settings ?= lr_config.
+  lt_columns = lr_column_settings->get_columns( ).
+
+
+  LOOP AT lt_columns INTO ls_column.
+    CREATE OBJECT lo_input_field EXPORTING value_fieldname = ls_column-id.
+
+    IF lv_modo_creacion EQ abap_true.
+      CASE ls_column-id.
+         
+          " Configurar todos los campos del ALV
+        WHEN 'MANDT'.
+          ls_column-r_column->set_position( 1 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_none ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Mandante' ).
+
+        WHEN 'CARRID'. " Campo clave
+          ls_column-r_column->set_position( 2 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Compañia aérea' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'CONNID'. " Campo clave
+          ls_column-r_column->set_position( 3 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Cod. conexión de vuelo directo' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'FLDATE'.
+          ls_column-r_column->set_position( 4 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Fecha de vuelo' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'PRICE'.
+          ls_column-r_column->set_position( 5 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Precio del vuelo' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'CURRENCY'.
+          ls_column-r_column->set_position( 6 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Moneda local de la compañía aérea' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'PLANETYPE'.
+          ls_column-r_column->set_position( 7 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Tipo de avión' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSMAX'.
+          ls_column-r_column->set_position( 8 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Ocupación máxima en clase económica' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSOCC'.
+          ls_column-r_column->set_position( 9 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Plazas ocupadas en clase económica' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'PAYMENTSUM'.
+          ls_column-r_column->set_position( 10 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Total reservas efectuadas hasta el momento' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSMAX_B'.
+          ls_column-r_column->set_position( 11 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Ocupación máxima en clase Business' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSOCC_B'.
+          ls_column-r_column->set_position( 12 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Plazas ocupada en clase Business' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSMAX_F'.
+          ls_column-r_column->set_position( 13 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Ocupación máxima en primera clase' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSOCC_F'.
+          ls_column-r_column->set_position( 14 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Plazas ocupadas en primera clase' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'EDIT'.
+          ls_column-r_column->set_position( 15 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_none ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Editable' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+      ENDCASE.
+    ELSE.
+      CASE ls_column-id.
+          
+          " Configurar todos los campos del ALV
+        WHEN 'MANDT'.
+          ls_column-r_column->set_position( 1 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_none ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Mandante' ).
+
+        WHEN 'CARRID'. " Campo clave
+          ls_column-r_column->set_position( 2 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Compañia aérea' ).
+
+          " Campo editable
+*        lo_column = lr_column_settings->get_column( ls_column-id ).
+*        lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'CONNID'. " Campo clave
+          ls_column-r_column->set_position( 3 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Cod. conexión de vuelo directo' ).
+
+          " Campo editable
+*        lo_column = lr_column_settings->get_column( ls_column-id ).
+*        lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'FLDATE'.
+          ls_column-r_column->set_position( 4 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Fecha de vuelo' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'PRICE'.
+          ls_column-r_column->set_position( 5 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Precio del vuelo' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'CURRENCY'.
+          ls_column-r_column->set_position( 6 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Moneda local de la compañía aérea' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'PLANETYPE'.
+          ls_column-r_column->set_position( 7 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Tipo de avión' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSMAX'.
+          ls_column-r_column->set_position( 8 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Ocupación máxima en clase económica' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSOCC'.
+          ls_column-r_column->set_position( 9 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Plazas ocupadas en clase económica' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'PAYMENTSUM'.
+          ls_column-r_column->set_position( 10 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Total reservas efectuadas hasta el momento' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSMAX_B'.
+          ls_column-r_column->set_position( 11 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Ocupación máxima en clase Business' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSOCC_B'.
+          ls_column-r_column->set_position( 12 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Plazas ocupada en clase Business' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSMAX_F'.
+          ls_column-r_column->set_position( 13 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Ocupación máxima en primera clase' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'SEATSOCC_F'.
+          ls_column-r_column->set_position( 14 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_visible ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Plazas ocupadas en primera clase' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+        WHEN 'EDIT'.
+          ls_column-r_column->set_position( 15 ).
+          ls_column-r_column->set_visible( if_wdl_core=>visibility_none ).
+          lo_column_header = ls_column-r_column->get_header( ).
+          lo_column_header->set_ddic_binding_field( if_salv_wd_c_column_settings=>ddic_bind_none ).
+          lo_column_header->set_text( 'Editable' ).
+
+          " Campo editable
+          lo_column = lr_column_settings->get_column( ls_column-id ).
+          lo_column->set_cell_editor( lo_input_field ).
+
+      ENDCASE.
+    ENDIF.
+
+  ENDLOOP.
+
+ENDMETHOD.
