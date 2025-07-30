@@ -1342,6 +1342,101 @@ SELECT-OPTIONS: s_carr FOR sflight-carrid,
                 s_conn FOR sflight-connid,
                 s_fldate FOR sflight-fldate.
 SELECTION-SCREEN END OF BLOCK b1.
+---
+FORM generar_fichero .
 
+  CONSTANTS: lc_nomf TYPE string VALUE ''.
+
+  DATA: lv_file    TYPE string,
+        lv_nombref TYPE string,
+        lv_ruta    TYPE string,
+        lv_txt     TYPE string,
+        lv_length  TYPE i,
+        lv_message TYPE string.
+
+  DATA: lt_file_write     TYPE TABLE OF ty_user_var,
+        ls_file_write     LIKE LINE OF  lt_file_write,
+        ls_organizaciones TYPE ty_user_var.
+
+  DATA: ls_coordinador_orgunit TYPE ty_coordinador_orgunit.
+* INI DGL 06.05.2024 - Cambios extractores de usuarios VAR y CIR.
+  DATA: lo_table_desc TYPE REF TO cl_abap_tabledescr,
+        lo_descr_ref  TYPE REF TO cl_abap_structdescr.
+
+  FIELD-SYMBOLS: <lfs_field> TYPE any.
+* FIN DGL 06.05.2024 - Cambios extractores de usuarios VAR y CIR.
+  DATA: lv_period_year TYPE zgrc_sap_period_year,
+        lv_day         TYPE num2.
+
+  CLEAR lv_nombref.
+
+  IF p_fich IS NOT INITIAL.
+    lv_nombref = p_fich.
+  ELSE.
+    lv_nombref = lc_nomf.
+  ENDIF.
+
+  DESCRIBE FIELD ls_file_write LENGTH lv_length IN CHARACTER MODE.
+
+  PERFORM constantes CHANGING lv_ruta lv_txt .
+
+  CONCATENATE  lv_ruta lv_nombref sy-datum lv_txt INTO lv_file.
+
+  OPEN DATASET lv_file FOR OUTPUT IN LEGACY TEXT MODE CODE PAGE '1160'.  "ENCODING DEFAULT.
+
+  IF sy-subrc NE 0 .                          "Error al crear el fichero
+    MESSAGE e000(38) WITH TEXT-004.
+
+  ELSE.
+
+    LOOP AT gt_organizaciones INTO ls_organizaciones.
+
+      MOVE-CORRESPONDING ls_organizaciones TO ls_file_write.
+* INI DGL 06.05.2024 - Cambios extractores de usuarios VAR y CIR.
+      " Recuperamos la estructura del fichero
+      lo_table_desc ?= cl_abap_typedescr=>describe_by_data( gt_organizaciones ).
+      lo_descr_ref  ?= lo_table_desc->get_table_line_type( ).
+
+      " Eliminamos las tildes
+      LOOP AT lo_descr_ref->components INTO DATA(ls_component).
+
+        ASSIGN COMPONENT ls_component-name OF STRUCTURE ls_file_write TO <lfs_field>.
+        IF sy-subrc IS INITIAL AND ls_component-type_kind EQ 'C'.
+          REPLACE: ALL OCCURRENCES OF 'á' IN <lfs_field> WITH 'a',
+                   ALL OCCURRENCES OF 'Á' IN <lfs_field> WITH 'A',
+                   ALL OCCURRENCES OF 'é' IN <lfs_field> WITH 'e',
+                   ALL OCCURRENCES OF 'É' IN <lfs_field> WITH 'E',
+                   ALL OCCURRENCES OF 'í' IN <lfs_field> WITH 'i',
+                   ALL OCCURRENCES OF 'I' IN <lfs_field> WITH 'I',
+                   ALL OCCURRENCES OF 'ó' IN <lfs_field> WITH 'o',
+                   ALL OCCURRENCES OF 'Ó' IN <lfs_field> WITH 'O',
+                   ALL OCCURRENCES OF 'ú' IN <lfs_field> WITH 'u',
+                   ALL OCCURRENCES OF 'Ú' IN <lfs_field> WITH 'U'.
+
+        ENDIF.
+
+      ENDLOOP.
+* FIN DGL 06.05.2024 - Cambios extractores de usuarios VAR y CIR.
+      TRY.
+
+          TRANSFER ls_file_write TO lv_file LENGTH lv_length.
+          CLEAR: ls_file_write.
+        CATCH cx_sy_conversion_codepage.
+          WRITE: TEXT-005, ls_file_write-objid, /.
+
+      ENDTRY.
+
+    ENDLOOP.
+
+  ENDIF.
+
+  lv_message = TEXT-003. "Fichero exportado: &1 Longitud de línea:
+
+  REPLACE '&1' WITH lv_file INTO lv_message.
+  WRITE: lv_message, lv_length.
+
+  CLOSE DATASET lv_file.
+
+ENDFORM.
 
 
