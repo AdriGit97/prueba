@@ -1286,3 +1286,62 @@ METHOD wddoinit .
   ENDLOOP.
 
 ENDMETHOD.
+
+-------
+Report de prueba
+*&---------------------------------------------------------------------*
+*& Include          Z_REPORT_FICH_ABM_FRM
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form F_INICIALIZAR
+*&---------------------------------------------------------------------*
+*& Limpiar variables, tablas, estructuras..
+*&---------------------------------------------------------------------*
+FORM f_inicializar .
+  CLEAR: gt_sflight,
+         gs_sflight.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_SELECCION_DATOS
+*&---------------------------------------------------------------------*
+*& Seleccion de datos para introducir en tabla.
+*&---------------------------------------------------------------------*
+FORM f_seleccion_datos .
+
+* Select para sacar los datos de la tabla SFLIGHT
+  SELECT carrid connid fldate price planetype
+    FROM sflight
+    INTO TABLE gt_sflight
+    WHERE carrid IN s_carr OR
+          connid IN s_conn OR
+          fldate IN s_fldate.
+
+  IF sy-subrc EQ 0.
+    " Ordenamos por lo campos de filtro
+    SORT gt_sflight BY carrid connid fldate.
+    DELETE ADJACENT DUPLICATES FROM gt_sflight COMPARING carrid connid fldate.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_GENERAR_FICHERO
+*&---------------------------------------------------------------------*
+*& Generación de fichero para tabla SFLIGHT
+*&---------------------------------------------------------------------*
+FORM f_generar_fichero .
+ENDFORM.
+
+...
+*&---------------------------------------------------------------------*
+*& Include          Z_REPORT_FICH_ABM_SEL
+*&---------------------------------------------------------------------*
+* PANTALLA DE SELECCIÓN
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS: p_fich TYPE string. "OBLIGATORY.
+SELECT-OPTIONS: s_carr FOR sflight-carrid,
+                s_conn FOR sflight-connid,
+                s_fldate FOR sflight-fldate.
+SELECTION-SCREEN END OF BLOCK b1.
+
+
+
