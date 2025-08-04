@@ -1438,5 +1438,101 @@ FORM generar_fichero .
   CLOSE DATASET lv_file.
 
 ENDFORM.
+----
+*&---------------------------------------------------------------------*
+*& Include          ZBIGDATA_CIR_MODOBJ_F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form F_INICIALIZAR
+*&---------------------------------------------------------------------*
+*& Borrar tablas, estructuras iniciales..
+*&---------------------------------------------------------------------*
+FORM f_inicializar .
+  CLEAR: gt_datos_eval[],
+         gt_workflow[],
+         gt_preg_resp[].
+ENDFORM.
 
+*&---------------------------------------------------------------------*
+*& Form F_SELECCION_DATOS
+*&---------------------------------------------------------------------*
+*& Selección de datos.
+*&---------------------------------------------------------------------*
+FORM f_seleccion_datos .
+
+  CONSTANTS: lc_svy_type TYPE string VALUE 'Z4',
+             lc_wi_type  TYPE string VALUE 'W'.
+
+* PRIMERA SELECT: para los datos de evaluación.
+  SELECT a~svyinstid, b~svytmplid,
+         b~objectid, b~regulation,
+         c~timeframe, c~tf_year, c~date_begin,
+         c~date_end, d~taskplan_grp_nam
+     INTO TABLE @gt_datos_eval
+     FROM grfntsvyinst AS a
+     INNER JOIN grfntsvygroup AS b ON
+                b~svygrpid EQ a~svygrpid
+     INNER JOIN grfntaskplan AS c
+                ON c~taskplan_id EQ b~taskplanid
+     INNER JOIN grfntaskplangrp AS d
+                ON d~taskplan_grp_id EQ c~taskplan_grp_id
+     WHERE b~svy_type EQ @lc_svy_type.
+
+  IF sy-subrc EQ 0.
+* SEGUNDA SELECT: para el estado, responsable y fecha fin del workflow.
+    SELECT
+        a~svyinstid,
+        b~top_wi_id,
+        c~wi_stat,
+        c~wi_cd,
+        c~wi_aagent,
+        c~crea_tmp
+      INTO TABLE @gt_workflow
+      FROM grfntsvyinst AS a
+      INNER JOIN sww_wi2obj AS b ON
+          b~instid EQ a~svyinstid
+      INNER JOIN swwwihead AS c  ON
+          c~top_wi_id EQ b~top_wi_id
+      WHERE c~wi_type EQ @lc_wi_type.
+
+    IF sy-subrc EQ 0.
+      SORT gt_workflow BY crea_tmp DESCENDING.
+    ENDIF.
+  ENDIF.
+
+  " TERCERA SELECT: Preguntas y respuestas
+  SELECT
+     a~svyinstid,
+     b~svytmplid,
+     c~text,
+     d~text,
+     e~comments
+     INTO TABLE @gt_preg_resp
+     FROM grfntsvyinst AS a
+     INNER JOIN grfntsvygroup AS b ON
+               b~svygrpid EQ a~svygrpid
+     INNER JOIN grpcsquestions AS f    ON
+               f~survey_id EQ b~svytmplid
+     INNER JOIN grpcqlibrary_t AS c ON
+               c~question_id EQ f~question_id
+     INNER JOIN grpcqanswer AS e ON
+               e~survey_id EQ a~svyinstid
+     INNER JOIN grfnqlibchoicet AS d ON
+               d~question_id EQ e~qid AND
+               d~cust_choice EQ e~cust_choice
+     WHERE b~svy_type EQ @lc_svy_type.
+
+    IF sy-subrc EQ 0.
+    ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form F_GENERAR_FICHERO
+*&---------------------------------------------------------------------*
+*& Generación del fichero.
+*&---------------------------------------------------------------------*
+FORM f_generar_fichero .
+
+ENDFORM.
 
