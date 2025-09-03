@@ -1536,3 +1536,147 @@ FORM f_generar_fichero .
 
 ENDFORM.
 
+------------------
+CUARTO EXTRACTOR:
+FORM seleccion_construccion_datos .
+  CONSTANTS: lc_svy_type  TYPE string VALUE 'Z1',
+             lc_i         TYPE string VALUE 'I',
+             lc_eq        TYPE string VALUE 'EQ',
+             lc_bt        TYPE string VALUE 'BT',
+             lc_wi_type   TYPE string VALUE 'W',
+             lc_completed TYPE string VALUE 'COMPLETED',
+             lc_ready     TYPE string VALUE 'READY',
+             lc_selected  TYPE string VALUE 'SELECTED',
+             lc_cancelled TYPE string VALUE 'CANCELLED'.
+
+  DATA: lr_instid          TYPE RANGE OF grfn_guid,
+        lr_wi_rh_task      TYPE RANGE OF sww_task,
+        lr_fecha           TYPE RANGE OF sy-datum,
+        lt_list            TYPE grfn_t_tf_tframe_list,
+        lt_responsables    TYPE TABLE OF swhactor,
+        lt_question_answer TYPE grfn_t_api_question_answer,
+        lo_object_qsurvey  TYPE REF TO if_grfn_api_survey_resp_cont,
+        lo_survey_response TYPE REF TO if_grfn_api_survey_response,
+        ls_survey_template TYPE grpc_s_api_survey_data,
+        ls_datos           TYPE gty_fichero,
+        lv_qsurvey_id      TYPE grfn_api_object_id,
+        lv_fecha           TYPE sy-datum.
+
+  go_session = cl_grfn_api_session=>open_daily( ).
+
+  " Obtencion de meses para el campo timeframe periodo.
+  CALL METHOD cl_grfn_api_timeframe=>timeframes
+    RECEIVING
+      rt_list = lt_list.
+
+  lr_wi_rh_task = VALUE #( sign   = lc_i
+                           option = lc_eq
+                         ( low    = 'TS90100016' )
+                         ( low    = 'TS90100013' ) ). " PREGUNTAR A DANI: en que task están éstas.
+
+* AUTOEVALUACIÖN:
+  SELECT svyinst~svyinstid, " Id_autoevaluación
+         svygroup~objectid, " Sproc_id
+         svygroup~svygrpid, " ID grupo de la autoevaluación
+         svyinst~completed_at, " Fecha completada de la autoevaluación
+         taskplan~timeframe, " Periodo
+         taskplan~tf_year,   " Año
+         taskplangrp~taskplan_grp_nam, " Tipo_actividad
+         svygroup~regulation, " Normativa
+         taskplan~date_begin, " Fecha_lanzamiento
+         taskplan~date_end,   " Fecha_vencimiento
+         svyinst~scomment,    " Comentarios generales
+         svyinst~zzcomentario " Comentarios responsable
+     INTO TABLE @DATA(lt_datos_eval_cir_subp)
+     FROM grfntsvyinst AS svyinst
+     INNER JOIN grfntsvygroup AS svygroup ON
+                svygroup~svygrpid EQ svyinst~svygrpid
+     INNER JOIN grfntaskplan AS taskplan
+                ON taskplan~taskplan_id EQ svygroup~taskplanid
+     INNER JOIN grfntaskplangrp AS taskplangrp
+                ON taskplangrp~taskplan_grp_id EQ taskplan~taskplan_grp_id
+     WHERE svygroup~svy_type EQ @lc_svy_type.
+
+  IF sy-subrc EQ 0.
+    " Ordenamos las tareas de autoevaluacion por id de grupo y fecha completada,
+    " quedando las completadas mas recientemente en primer lugar
+    SORT lt_datos_eval_cir_subp BY svygrpid    DESCENDING
+                                  completed_at DESCENDING.
+
+    " Borramos los duplicados teniendo en cuenta el ID del grupo
+    DELETE ADJACENT DUPLICATES FROM lt_datos_eval_cir_subp COMPARING svygrpid.
+
+    " Rango para los instid
+    lr_instid = VALUE #( FOR ls_datos_eval_cir_subp IN lt_datos_eval_cir_subp
+                               sign   = lc_i
+                               option = lc_eq
+                             ( low    = ls_datos_eval_cir_subp-svyinstid ) ).
+
+* DATOS TAREAS DEL WORKFLOW.
+    SELECT
+     wi2obj~instid,  " Id de la autoevaluación
+     swwwihead~top_wi_id, " Id Workflow padre
+     swwwihead~wi_id,   " Id workflow item
+     swwwihead~wi_stat, " Estado del workflow
+     swwwihead~wi_aed,   " Fecha fin
+     swwwihead~wi_rh_task, " Tarea
+     swwwihead~wi_aagent, " Responsable actual
+     swwwihead~crea_tmp  "Para ordenar más reciente
+    INTO TABLE @DATA(lt_tareas_wf)
+    FROM swwwihead AS swwwihead
+    INNER JOIN sww_wi2obj AS wi2obj ON
+        wi2obj~top_wi_id EQ swwwihead~top_wi_id
+    WHERE swwwihead~wi_type EQ @lc_wi_type AND
+        swwwihead~wi_stat  NE @lc_cancelled AND
+        wi2obj~instid IN @lr_instid AND
+        swwwihead~wi_rh_task IN @lr_wi_rh_task " PREGUNTAR DANI: Si es solo una tarea EQ, si esta comprendido entre varias tareas un rango
+      ORDER BY swwwihead~top_wi_id, swwwihead~crea_tmp DESCENDING.
+
+    IF sy-subrc EQ 0.
+      DELETE ADJACENT DUPLICATES FROM lt_tareas_wf COMPARING top_wi_id.
+
+      lr_instid = VALUE #( FOR ls_tarea_wf IN lt_tareas_wf
+                               sign   = lc_i
+                               option = lc_eq
+                             ( low    = ls_tarea_wf-instid ) ).
+
+      DELETE lt_datos_eval_cir_subp WHERE svyinstid NOT IN lr_instid.
+    ENDIF.
+
+* DATOS TEXTO DE LAS PREGUNTAS.
+    SELECT *
+      FROM grfnqlibchoicet
+      INTO TABLE @DATA(lt_answers_text).
+
+    IF sy-subrc EQ 0.
+    ENDIF.
+
+    LOOP AT lt_datos_eval_cir_subp ASSIGNING FIELD-SYMBOL(<fs_datos_eval_cir_subp>).
+      CLEAR: ls_datos,
+             ls_survey_template,
+             lt_question_answer,
+             lv_qsurvey_id,
+             lo_object_qsurvey,
+             lo_survey_response.
+
+* Obtener preguntas y respuestas de la autoevaluación del riesgo.
+      lv_qsurvey_id = cl_grfn_api_ident=>get_id_from_guid( i_entity = grfn0_c_entity-qsurvey
+                                                           i_objid  = <fs_datos_eval_cir_subp>-svyinstid ).
+
+      TRY.
+          lo_object_qsurvey ?= go_session->get( lv_qsurvey_id ).
+
+          IF lo_object_qsurvey IS BOUND.
+            lo_survey_response = lo_object_qsurvey->get_survey_response_api( ).
+
+            lo_survey_response->retrieve( EXPORTING iv_regulation_id   = gv_regulation_id " PREGUNTAR A DANI: Para que es esto exactamente gv_regulation_id.
+                                          IMPORTING et_question_answer = lt_question_answer
+                                                    es_survey          = ls_survey_template ).
+          ENDIF.
+
+        CATCH cx_grfn_exception.
+          CONTINUE.
+      ENDTRY.
+    ENDLOOP.
+  ENDIF.
+
