@@ -1679,4 +1679,411 @@ FORM seleccion_construccion_datos .
       ENDTRY.
     ENDLOOP.
   ENDIF.
+---------
+HOY
+*&---------------------------------------------------------------------*
+*& Include          ZBIGDATA_CIR_AUTO_SUBP_F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form SELECCION_CONSTRUCCION_DATOS
+*&---------------------------------------------------------------------*
+FORM seleccion_construccion_datos .
+  CONSTANTS: lc_svy_type  TYPE string VALUE 'Z1',
+             lc_i         TYPE string VALUE 'I',
+             lc_eq        TYPE string VALUE 'EQ',
+             lc_bt        TYPE string VALUE 'BT',
+             lc_wi_type   TYPE string VALUE 'W',
+             lc_completed TYPE string VALUE 'COMPLETED',
+             lc_ready     TYPE string VALUE 'READY',
+             lc_selected  TYPE string VALUE 'SELECTED',
+             lc_cancelled TYPE string VALUE 'CANCELLED'.
 
+  DATA: lr_instid          TYPE RANGE OF grfn_guid,
+        lr_wi_rh_task      TYPE RANGE OF sww_task,
+        lr_fecha           TYPE RANGE OF sy-datum,
+        lv_nivel_ri        TYPE dd07l-domname,
+        lt_dom_value       TYPE TABLE OF dd07v,
+        lt_list            TYPE grfn_t_tf_tframe_list,
+        lt_responsables    TYPE TABLE OF swhactor,
+        lt_question_answer TYPE grfn_t_api_question_answer,
+        lo_object_qsurvey  TYPE REF TO if_grfn_api_survey_resp_cont,
+        lo_survey_response TYPE REF TO if_grfn_api_survey_response,
+        ls_survey_template TYPE grpc_s_api_survey_data,
+        ls_datos           TYPE gty_fichero,
+        lv_qsurvey_id      TYPE grfn_api_object_id,
+        lv_fecha           TYPE sy-datum.
+
+  go_session = cl_grfn_api_session=>open_daily( ).
+
+  " Obtencion de meses para el campo timeframe periodo.
+  CALL METHOD cl_grfn_api_timeframe=>timeframes
+    RECEIVING
+      rt_list = lt_list.
+
+  lr_wi_rh_task = VALUE #( sign   = lc_i
+                           option = lc_eq
+                         ( low    = 'TS90100016' )
+                         ( low    = 'TS90100013' ) ).
+
+* AUTOEVALUACIÖN:
+  SELECT svyinst~svyinstid, " Id_autoevaluación
+         svygroup~objectid, " Sproc_id
+         svygroup~svygrpid, " ID grupo de la autoevaluación
+         svyinst~completed_at, " Fecha completada de la autoevaluación
+         taskplan~timeframe, " Periodo
+         taskplan~tf_year,   " Año
+         taskplangrp~taskplan_grp_nam, " Tipo_actividad
+         svygroup~regulation, " Normativa
+         taskplan~date_begin, " Fecha_lanzamiento
+         taskplan~date_end,   " Fecha_vencimiento
+         svyinst~scomment,    " Comentarios generales
+         svyinst~zzcomentario, " Comentarios responsable
+         grc_subp_sur~ries_inhv, " Riesgo inhernete cualitativo
+         grc_subp_sur~amb_contv " Ambiente de control cualitativo
+     INTO TABLE @DATA(lt_datos_eval_cir_subp)
+     FROM grfntsvyinst AS svyinst
+     INNER JOIN grfntsvygroup AS svygroup ON
+                svygroup~svygrpid EQ svyinst~svygrpid
+     INNER JOIN ztt_grc_subp_sur AS grc_subp_sur ON
+                grc_subp_sur~survey_id EQ svyinst~svyinstid
+     INNER JOIN grfntaskplan AS taskplan ON
+                taskplan~taskplan_id EQ svygroup~taskplanid
+     INNER JOIN grfntaskplangrp AS taskplangrp ON
+                taskplangrp~taskplan_grp_id EQ taskplan~taskplan_grp_id
+     WHERE svygroup~svy_type EQ @lc_svy_type.
+
+
+  IF sy-subrc EQ 0.
+    " Ordenamos las tareas de autoevaluacion por id de grupo y fecha completada,
+    " quedando las completadas mas recientemente en primer lugar
+    SORT lt_datos_eval_cir_subp BY svygrpid    DESCENDING
+                                  completed_at DESCENDING.
+
+    " Borramos los duplicados teniendo en cuenta el ID del grupo
+    DELETE ADJACENT DUPLICATES FROM lt_datos_eval_cir_subp COMPARING svygrpid.
+
+    " Rango para los instid
+    lr_instid = VALUE #( FOR ls_datos_eval_cir_subp IN lt_datos_eval_cir_subp
+                               sign   = lc_i
+                               option = lc_eq
+                             ( low    = ls_datos_eval_cir_subp-svyinstid ) ).
+
+* DATOS TAREAS DEL WORKFLOW.
+    SELECT
+     wi2obj~instid,  " Id de la autoevaluación
+     swwwihead~top_wi_id, " Id Workflow padre
+     swwwihead~wi_id,   " Id workflow item
+     swwwihead~wi_stat, " Estado del workflow
+     swwwihead~wi_aed,   " Fecha fin
+     swwwihead~wi_rh_task, " Tarea
+     swwwihead~wi_aagent, " Responsable actual
+     swwwihead~crea_tmp  "Para ordenar más reciente
+    INTO TABLE @DATA(lt_tareas_wf)
+    FROM swwwihead AS swwwihead
+    INNER JOIN sww_wi2obj AS wi2obj ON
+        wi2obj~top_wi_id EQ swwwihead~top_wi_id
+    WHERE swwwihead~wi_type EQ @lc_wi_type AND
+        swwwihead~wi_stat  NE @lc_cancelled AND
+        wi2obj~instid IN @lr_instid AND
+        swwwihead~wi_rh_task IN @lr_wi_rh_task
+      ORDER BY swwwihead~top_wi_id, swwwihead~crea_tmp DESCENDING.
+
+    IF sy-subrc EQ 0.
+      DELETE ADJACENT DUPLICATES FROM lt_tareas_wf COMPARING top_wi_id.
+
+      lr_instid = VALUE #( FOR ls_tarea_wf IN lt_tareas_wf
+                               sign   = lc_i
+                               option = lc_eq
+                             ( low    = ls_tarea_wf-instid ) ).
+
+      DELETE lt_datos_eval_cir_subp WHERE svyinstid NOT IN lr_instid.
+    ENDIF.
+
+* DATOS TEXTO DE LAS PREGUNTAS.
+    SELECT *
+      FROM grfnqlibchoicet
+      INTO TABLE @DATA(lt_answers_text).
+
+    IF sy-subrc EQ 0.
+    ENDIF.
+
+* DATOS PARA LOS UMBRALES DE LOS CAMPOS:
+    " NIVEL RIESGO INHERENTE CUALITATIVO
+    " NIVEL AMBIENTE DE CONTROL CUALITATIVO
+    SELECT *
+      FROM ztt_cir_result
+      INTO TABLE @DATA(lt_cir_result)
+      WHERE zz_objeto EQ 'OF'. " Para descartar los demás y solo centrarnos en los de subproceso.
+    IF sy-subrc EQ 0.
+      SORT lt_cir_result BY nivel ASCENDING.
+    ENDIF.
+
+
+    LOOP AT lt_datos_eval_cir_subp ASSIGNING FIELD-SYMBOL(<fs_datos_eval_cir_subp>).
+      CLEAR: ls_datos,
+             ls_survey_template,
+             lt_question_answer,
+             lv_qsurvey_id,
+             lo_object_qsurvey,
+             lo_survey_response.
+
+* Obtener preguntas y respuestas de la autoevaluación del riesgo.
+      lv_qsurvey_id = cl_grfn_api_ident=>get_id_from_guid( i_entity = grfn0_c_entity-qsurvey
+                                                           i_objid  = <fs_datos_eval_cir_subp>-svyinstid ).
+
+      TRY.
+          lo_object_qsurvey ?= go_session->get( lv_qsurvey_id ).
+
+          IF lo_object_qsurvey IS BOUND.
+            lo_survey_response = lo_object_qsurvey->get_survey_response_api( ).
+
+            lo_survey_response->retrieve( EXPORTING iv_regulation_id   = gv_regulation_id
+                                          IMPORTING et_question_answer = lt_question_answer
+                                                    es_survey          = ls_survey_template ).
+          ENDIF.
+
+        CATCH cx_grfn_exception.
+          CONTINUE.
+      ENDTRY.
+
+* Rellenar datos de la tarea de autoevaluación
+      ls_datos-id_autoevaluacion       = <fs_datos_eval_cir_subp>-svyinstid.
+      ls_datos-sproc_id                = <fs_datos_eval_cir_subp>-objectid.
+      ls_datos-anyo                    = <fs_datos_eval_cir_subp>-tf_year.
+      ls_datos-tipo_actividad          = <fs_datos_eval_cir_subp>-taskplan_grp_nam.
+      ls_datos-normativa               = <fs_datos_eval_cir_subp>-regulation.
+      ls_datos-fecha_inicio            = <fs_datos_eval_cir_subp>-date_begin.
+      ls_datos-fecha_vencimiento       = <fs_datos_eval_cir_subp>-date_end.
+      ls_datos-comentarios_generales   = <fs_datos_eval_cir_subp>-scomment.
+      ls_datos-comentarios_responsable = <fs_datos_eval_cir_subp>-zzcomentario.
+
+      " Le quito espacios en blanco.
+      ls_datos-ri_cualitativo_encuesta = <fs_datos_eval_cir_subp>-ries_inhv.
+      CONDENSE ls_datos-ri_cualitativo_encuesta NO-GAPS.
+      ls_datos-ac_cualitativo_encuesta = <fs_datos_eval_cir_subp>-amb_contv.
+      CONDENSE ls_datos-ac_cualitativo_encuesta NO-GAPS.
+
+      READ TABLE lt_list INTO DATA(ls_periodo) WITH KEY timeframe = <fs_datos_eval_cir_subp>-timeframe.
+      IF sy-subrc EQ 0.
+        ls_datos-periodo = ls_periodo-text.
+      ENDIF.
+
+* Rellenamos los campos nivel riesgo inherente cualitativo
+*  y nivel ambiente de control cualitativo
+      LOOP AT lt_cir_result ASSIGNING FIELD-SYMBOL(<fs_cir_result>) WHERE
+                                                           ( valor_umbral_minimo LE ls_datos-ri_cualitativo_encuesta AND
+                                                           valor_umbral_maximo GE ls_datos-ri_cualitativo_encuesta ) OR
+                                                           ( valor_umbral_minimo LE ls_datos-ac_cualitativo_encuesta AND
+                                                           valor_umbral_maximo GE ls_datos-ac_cualitativo_encuesta ).
+        lv_nivel_ri = <fs_cir_result>-nivel.
+
+      ENDLOOP.
+
+* Sacamos el nombre del texto a partir del dominio del elemento de datos con la funcion DOM_VALUES_GET.
+      CALL FUNCTION 'DD_DOMVALUES_GET'
+        EXPORTING
+          domname   = 'ZDM_NIV_RINH'
+          text      = 'X'
+          langu     = sy-langu
+        TABLES
+          dd07v_tab = lt_dom_value.
+
+* Leemos la tabla resultante con los niveles, cogemos el texto y rellenamos en el fichero.
+      READ TABLE lt_dom_value ASSIGNING FIELD-SYMBOL(<fs_dom_value>) WITH KEY domvalue_l = <fs_cir_result>-nivel.
+      IF sy-subrc EQ 0.
+        ls_datos-nivel_ri_cualitativo_encuesta = <fs_dom_value>-ddtext.
+        ls_datos-nivel_ac_cualitativo_encuesta = <fs_dom_value>-ddtext.
+      ENDIF.
+
+* Rellenar datos del Workflow de la tarea de autoevaluación de riesgo.
+      READ TABLE lt_tareas_wf ASSIGNING FIELD-SYMBOL(<fs_tarea_wf>) WITH KEY instid = <fs_datos_eval_cir_subp>-svyinstid.
+      IF sy-subrc EQ 0.
+        " Fecha Fin (Cierre del Workflow)
+        IF <fs_tarea_wf>-wi_stat NE lc_completed.
+          CLEAR ls_datos-fecha_fin.
+        ELSE.
+          ls_datos-fecha_fin = <fs_tarea_wf>-wi_aed.
+        ENDIF.
+
+        " Estado de la tarea de autoevaluación (workflow)
+        ls_datos-estado = COND #( WHEN <fs_tarea_wf>-wi_stat EQ lc_ready     THEN 'Enviado'
+                                  WHEN <fs_tarea_wf>-wi_stat EQ lc_selected  THEN 'En tratamiento'
+                                  WHEN <fs_tarea_wf>-wi_stat EQ lc_completed THEN 'Finalizado' ).
+
+        " Responsable de la tarea de autoevaluación
+        IF <fs_tarea_wf>-wi_aagent IS INITIAL.
+
+          CALL FUNCTION 'SWW_WI_AGENTS_READ'
+            EXPORTING
+              wi_id  = <fs_tarea_wf>-wi_id
+            TABLES
+              agents = lt_responsables.
+
+          READ TABLE lt_responsables INDEX 1 INTO DATA(ls_responsable).
+          ls_datos-responsable_actual = ls_responsable-objid.
+
+        ELSE.
+          ls_datos-responsable_actual = <fs_tarea_wf>-wi_aagent.
+        ENDIF.
+
+* Rellenar datos de la pregunta y respuesta, por cada línea
+        LOOP AT lt_question_answer ASSIGNING FIELD-SYMBOL(<fs_question_answer>).
+
+          CLEAR: gs_datos_fichero.
+
+          MOVE-CORRESPONDING ls_datos TO gs_datos_fichero.
+
+          gs_datos_fichero-pregunta            = <fs_question_answer>-text. " Texto de la pregunta
+          gs_datos_fichero-comentario_pregunta = <fs_question_answer>-comments. " Comentario de la pregunta
+
+          READ TABLE lt_answers_text INTO DATA(ls_answer_text) WITH KEY langu       = sy-langu
+                                                                        question_id = cl_grfn_api_ident=>get_guid( <fs_question_answer>-question_id )
+                                                                        cust_choice = <fs_question_answer>-cust_choice.
+          IF sy-subrc EQ 0.
+            gs_datos_fichero-respuesta = ls_answer_text-text.
+          ENDIF.
+
+          APPEND gs_datos_fichero TO gt_datos_fichero.
+
+        ENDLOOP.
+      ELSE.
+        CONTINUE.
+      ENDIF.
+    ENDLOOP.
+
+* si el check 'Delta Diario' si esta marcado, debe enviar las autoevaluaciones abiertas y las cerradas dentro de la fecha informada/actual
+* Si el check 'Delta Diario' NO esta marcado, debe enviar las autoevaluaciones abiertas y cerradas de todos los tiempos
+    IF gt_datos_fichero IS NOT INITIAL AND
+       p_check EQ abap_true.
+
+      IF s_fecha[] IS NOT INITIAL. " Si el rango de fechas está informado
+
+        IF s_fecha-low IS NOT INITIAL AND
+           s_fecha-high IS NOT INITIAL.
+          lr_fecha  = VALUE #( sign   = lc_i
+                               option = lc_bt
+                             ( low    = s_fecha-low
+                               high   = s_fecha-high ) ).
+
+          " Mantener cerradas que esten en el rango de fechas
+          DELETE gt_datos_fichero WHERE estado EQ 'Finalizado' AND fecha_fin NOT IN lr_fecha.
+
+        ELSE. " Si uno de los campos fecha esta informado
+          lv_fecha = COND #( WHEN s_fecha-low IS NOT INITIAL THEN s_fecha-low
+                             WHEN s_fecha-high IS NOT INITIAL THEN s_fecha-high ).
+
+          DELETE gt_datos_fichero WHERE estado EQ 'Finalizado' AND fecha_fin NE lv_fecha.
+        ENDIF.
+
+      ELSE. " Si no hay rango de fecha informado, utilizamos la fecha actual
+        lv_fecha = sy-datum - 1.
+
+        DELETE gt_datos_fichero WHERE estado EQ 'Finalizado' AND fecha_fin NE lv_fecha.
+      ENDIF.
+
+    ENDIF.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form GENERACION_FICHERO
+*&---------------------------------------------------------------------*
+FORM generacion_fichero.
+
+  CONSTANTS: lc_nombre_fich TYPE string VALUE 'MRC00240'.
+
+  DATA: ls_file_write TYPE gty_fichero,
+        lv_file       TYPE string,
+        lv_ruta       TYPE string,
+        lv_txt        TYPE string,
+        lv_length     TYPE i,
+        lv_info       TYPE string,
+        lv_error      TYPE string,
+        lo_table_desc TYPE REF TO cl_abap_tabledescr,
+        lo_descr_ref  TYPE REF TO cl_abap_structdescr.
+
+  FIELD-SYMBOLS: <lfs_field> TYPE any.
+
+  DESCRIBE FIELD ls_file_write LENGTH lv_length IN CHARACTER MODE.
+
+  " Obtener ruta y extensión del fichero
+  PERFORM constantes CHANGING lv_ruta lv_txt.
+
+  " Si el nombre del fichero se ha introducido en la pantalla, se recoge de ahí
+  IF p_fich IS NOT INITIAL.
+    CONCATENATE lv_ruta p_fich sy-datum lv_txt INTO lv_file.
+  ELSE.
+    " Si no le añadimos el nombre del fichero por defecto y la fecha.
+    CONCATENATE lv_ruta lc_nombre_fich sy-datum lv_txt INTO lv_file.
+  ENDIF.
+
+  " Abrimos el fichero para escritura
+  OPEN DATASET lv_file FOR OUTPUT IN LEGACY TEXT MODE CODE PAGE '1160'.
+
+  LOOP AT gt_datos_fichero INTO DATA(ls_fichero).
+    MOVE-CORRESPONDING ls_fichero TO ls_file_write.
+
+    " Obtenemos el objeto del fichero.
+    lo_table_desc ?= cl_abap_typedescr=>describe_by_data( gt_datos_fichero ).
+
+    " Obtenemos el objetos de cada campo.
+    lo_descr_ref ?= lo_table_desc->get_table_line_type( ).
+
+    " Recorremos los componentes del fichero para eliminar tildes, y añadirle espacios.
+    LOOP AT lo_descr_ref->components INTO DATA(ls_component).
+      ASSIGN COMPONENT ls_component-name OF STRUCTURE ls_file_write TO <lfs_field>.
+
+      IF sy-subrc IS INITIAL AND ls_component-type_kind EQ 'C'.
+        REPLACE: ALL OCCURRENCES OF 'á' IN <lfs_field> WITH 'a',
+                 ALL OCCURRENCES OF 'Á' IN <lfs_field> WITH 'A',
+                 ALL OCCURRENCES OF 'é' IN <lfs_field> WITH 'e',
+                 ALL OCCURRENCES OF 'É' IN <lfs_field> WITH 'E',
+                 ALL OCCURRENCES OF 'í' IN <lfs_field> WITH 'i',
+                 ALL OCCURRENCES OF 'I' IN <lfs_field> WITH 'I',
+                 ALL OCCURRENCES OF 'ó' IN <lfs_field> WITH 'o',
+                 ALL OCCURRENCES OF 'Ó' IN <lfs_field> WITH 'O',
+                 ALL OCCURRENCES OF 'ú' IN <lfs_field> WITH 'u',
+                 ALL OCCURRENCES OF 'Ú' IN <lfs_field> WITH 'U',
+                 ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN <lfs_field> WITH space,
+                 ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN <lfs_field> WITH space,
+                 ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN <lfs_field> WITH space.
+      ENDIF.
+
+    ENDLOOP.
+    TRY.
+* PARA DANI: El fichero que me crea es mas grande que el que muestra en la al11.
+* En los campos cualitativo tiene espacios en blanco.
+        " Escribimos las línea en el fichero
+        TRANSFER ls_file_write TO lv_file LENGTH lv_length.
+        CLEAR: ls_file_write.
+      CATCH cx_sy_conversion_codepage.
+        WRITE: 'Error en conversion:', ls_file_write-id_autoevaluacion.
+    ENDTRY.
+  ENDLOOP.
+
+  lv_info = 'Fichero exportado: &1 Longitud de línea: '.
+  REPLACE '&1' WITH lv_file INTO lv_info.
+  WRITE: lv_info, lv_length.
+
+  CLOSE DATASET lv_file.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form CONSTANTES
+*&---------------------------------------------------------------------*
+FORM constantes  CHANGING lv_ruta TYPE string lv_txt TYPE string.
+  DATA: lt_const TYPE gtt_const,
+        ls_const TYPE gty_const.
+
+  SELECT tipo low
+    FROM ztt_grc_constant
+    INTO TABLE lt_const
+    WHERE id_prog EQ 'ZBIGDATA_GRC'.
+
+  CLEAR: ls_const.
+  READ TABLE lt_const INTO ls_const WITH KEY tipo = 'RUTA'.
+  lv_ruta = ls_const-low.
+
+  CLEAR: ls_const.
+  READ TABLE lt_const INTO ls_const WITH KEY tipo = 'EXTENSION'.
+  lv_txt = ls_const-low.
+ENDFORM.
