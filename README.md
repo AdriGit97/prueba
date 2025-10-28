@@ -3173,3 +3173,1095 @@ METHOD onactionir.
   ENDIF.
 
 ENDMETHOD.
+
+-----
+TYPES: BEGIN OF typ_resp,
+           id_control TYPE hrobjid,
+           resp       TYPE grfn_text,
+         END OF typ_resp.
+
+  TYPES: BEGIN OF typ_data.
+           INCLUDE TYPE zst_cir_informe_kci_cir.
+           TYPES: subprocess_id  TYPE hrobjid,
+           subprocess_txt TYPE grfn_title,
+           "control_id     TYPE hrobjid,
+           control_txt    TYPE grfn_title,
+
+         END OF typ_data,
+
+         typ_t_data TYPE TABLE OF typ_data.
+
+  DATA(lo_amdp) = NEW zcl_amdp_informes_cir( ).
+
+  DATA: lt_alv_kci TYPE STANDARD TABLE OF zst_cir_informe_kci_cir,
+        ls_alv_kci TYPE zst_cir_informe_kci_cir.
+
+  DATA(lo_help_general) = wd_this->wd_cpifc_help_general( ).
+  DATA: lv_aux      TYPE hrobjid,
+        lt_data     TYPE typ_t_data,
+        lt_data_aux TYPE typ_t_data,
+        lt_informe  TYPE STANDARD TABLE OF zst_cir_informe_kci_cir,
+        lv_descr    TYPE grfn_text,
+        lt_resp     TYPE STANDARD TABLE OF typ_resp.
+
+  DATA: lv_date          TYPE sy-datum,
+        lv_last_day      TYPE sy-datum,
+        lv_first_day     TYPE sy-datum,
+        lv_date_ant      TYPE sy-datum,
+        lv_last_day_ant  TYPE sy-datum,
+        lv_first_day_ant TYPE sy-datum,
+        lv_month         TYPE /osp/dt_rp_month,
+        lr_subprc_id     TYPE RANGE OF hrobjid,
+        lr_contr_id      TYPE RANGE OF hrobjid,
+        lr_kci           TYPE RANGE OF hrp1000-objid,
+        lr_control       TYPE RANGE OF hrp1000-objid,
+        lr_risk_id       TYPE RANGE OF hrobjid.
+
+*INI WCMG 02.08.2024 CIR - OPTIMIZACION DE INFORMES
+  lo_help_general->recuperar_datos( ).
+*INI WCMG 02.08.2024 CIR - OPTIMIZACION DE INFORMES
+
+*  " Primero, recuperamos todos los dominios
+*  DATA(lt_domvalue_nivel_riesgo)    = VALUE dd07v_tab( ).
+*  DATA(lt_domvalue_rres)            = VALUE dd07v_tab( ).
+*  DATA(lt_domvalue_nvl_ambiente)    = VALUE dd07v_tab( ).
+
+  DATA(lo_el_context) = wd_context->get_element( ).
+  lo_el_context->set_attribute(
+    name =  `ENABLED`
+    value = abap_false ).
+
+  " Primero, recuperamos todos los dominios
+  DATA(lt_domvalue_nivel_riesgo)    = VALUE dd07v_tab( ).
+  DATA(lt_domvalue_rres)            = VALUE dd07v_tab( ).
+  DATA(lt_dom_status)               = VALUE dd07v_tab( ).
+  DATA(lt_clas_indi)                = VALUE dd07v_tab( ).
+  DATA(lt_dim_indi)                 = VALUE dd07v_tab( ).
+  DATA(lt_tipo_umbral)              = VALUE dd07v_tab( ).
+  DATA(lt_tend_indic)               = VALUE dd07v_tab( ).
+  DATA(lt_result_eva)               = VALUE dd07v_tab( ).
+  DATA(lt_riesgo_inh)               = VALUE dd07v_tab( ).
+  DATA(lt_dom_fecuencia)            = VALUE dd07v_tab( ).
+  DATA(lt_valor_ambiente)           = VALUE dd07v_tab( ).
+* INI MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+  DATA(lt_publicado)                = VALUE dd07v_tab( ).
+  DATA(lt_visible_ci)               = VALUE dd07v_tab( ).
+* FIN MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+
+
+  " Recuperamos el dominio del status
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'GRRM_KRI_INST_STATUS'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_dom_status
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+  " Recuperamos el dominio del status
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDM_PERIODICIDAD'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_dom_fecuencia
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+  " Recuperamos el dominio de clase indicador
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDM_CLASE_INDICADOR'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_clas_indi
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+  " Recuperamos el dominio de dimension indicador
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDM_DIMENSION_INDICADOR'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_dim_indi
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+  " Recuperamos el dominio de tipo umbral
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDM_TIPO_UMBRAL'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_tipo_umbral
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+  " Recuperamos el dominio de tendencia indicador
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDM_TENDENCIA_INDICADOR_N'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_tend_indic
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+  " Recuperamos el dominio de resultado evaluación
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDM_RESUL_EVA_NUM'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_result_eva
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+  " Recuperamos el dominio de riesgo inherente
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDE_NIVEL'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_riesgo_inh
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+  " Recuperamos el dominio de riesgo inherente
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDM_NIVEL_AMBIENTE_CONTROL'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_valor_ambiente
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+* INI MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+  " Recuperamos el dominio de publicado
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDM_PUBLICADO'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_publicado
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+
+  " Recuperamos el dominio de visible cir
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDE_VISIBLE_CIR'
+      text           = abap_true
+    TABLES
+      dd07v_tab      = lt_visible_ci
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+* FIN MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+
+* Recuperamos los filtros de la pantalla de selección
+  lo_help_general->recuperar_filtros(
+    IMPORTING
+      et_control             = DATA(lt_control)
+      et_process             = DATA(lt_process)
+      et_process_lvl_2       = DATA(lt_process_lvl_2)
+      et_process_lvl_3       = DATA(lt_process_lvl_3)
+      et_process_lvl_4       = DATA(lt_process_lvl_4)
+      et_riesgos             = DATA(lt_riesgos)
+      et_subprocess          = DATA(lt_subprocess)
+      et_subproc_by_lvl_proc = DATA(lt_subproc_by_lvl_proc)
+      et_kci                 = DATA(lt_kci)
+      ev_control_id          = DATA(lv_control_id)
+      ev_proc_id_lvl_1       = DATA(lv_proc_id_lvl_1)
+      ev_proc_id_lvl_2       = DATA(lv_proc_id_lvl_2)
+      ev_proc_id_lvl_3       = DATA(lv_proc_id_lvl_3)
+      ev_proc_id_lvl_4       = DATA(lv_proc_id_lvl_4)
+      ev_risk_id             = DATA(lv_risk_id)
+      ev_subproc_id          = DATA(lv_subproc_id)
+      ev_kci_id              = DATA(lv_kci_id)
+      ev_anyo                = DATA(lv_anyo)
+      es_periodo             = DATA(ls_periodo)
+      ev_anyo_ant            = DATA(lv_anyo_ant)
+      es_periodo_ant         = DATA(ls_periodo_ant)
+      ) .
+
+  "Eliminamos aquellas líneas que no tengan Subproceso, ya que no tendrán Controles asignados
+  DELETE lt_subproc_by_lvl_proc WHERE subprocess_id IS INITIAL.
+
+  IF lv_kci_id IS NOT INITIAL.
+
+    lr_kci   = VALUE #( sign   = 'I'
+                       option = 'EQ'
+                     (  low    = lv_kci_id ) ) .
+
+  ENDIF.
+
+  IF lv_control_id IS NOT INITIAL.
+
+    lr_control   = VALUE #( sign   = 'I'
+                       option = 'EQ'
+                     (  low    = lv_control_id ) ) .
+
+  ENDIF.
+
+  IF ls_periodo-id_periodo CS '0SAPM_'.
+
+    lv_month = ls_periodo-id_periodo+6(2).
+
+    lv_date      = lv_anyo && lv_month && '01'.
+    lv_first_day = lv_anyo && lv_month && '01'.
+
+  ELSEIF ls_periodo-id_periodo EQ '0SAPY_YEAR'.
+
+    lv_date      = lv_anyo && '1201'.
+    lv_first_day = lv_anyo && '0101'.
+
+  ENDIF.
+
+  CALL FUNCTION 'SN_LAST_DAY_OF_MONTH'
+    EXPORTING
+      day_in       = lv_date
+    IMPORTING
+      end_of_month = lv_last_day.
+
+  IF ls_periodo_ant-id_periodo CS '0SAPM_'.
+
+    lv_month = ls_periodo_ant-id_periodo+6(2).
+
+    lv_date_ant      = lv_anyo_ant && lv_month && '01'.
+    lv_first_day_ant = lv_anyo_ant && lv_month && '01'.
+
+  ELSEIF ls_periodo_ant-id_periodo EQ '0SAPY_YEAR'.
+
+    lv_date_ant      = lv_anyo_ant && '1201'.
+    lv_first_day_ant = lv_anyo_ant && '0101'.
+
+  ENDIF.
+
+  CALL FUNCTION 'SN_LAST_DAY_OF_MONTH'
+    EXPORTING
+      day_in       = lv_date_ant
+    IMPORTING
+      end_of_month = lv_last_day_ant.
+
+*ZST_CIR_INFORME_KCI_CIR
+  DATA lr_kci_id TYPE RANGE OF hrobjid.
+
+  IF lv_proc_id_lvl_4 IS NOT INITIAL.
+
+    " Recorremos todos los resultados y vamos rellenando las tablas
+    " para filtrar la selección
+    LOOP AT lt_subproc_by_lvl_proc ASSIGNING FIELD-SYMBOL(<ls_subproc_by_lvl_proc>)
+          WHERE process1_id EQ lv_proc_id_lvl_1
+            AND process2_id EQ lv_proc_id_lvl_2
+            AND process3_id EQ lv_proc_id_lvl_3
+            AND process4_id EQ lv_proc_id_lvl_4.
+      " Si tiene subproceso
+      IF <ls_subproc_by_lvl_proc>-subprocess_id IS NOT INITIAL.
+
+        " Buscamos si tiene control asociado
+        IF line_exists( lt_control[ subprocess_id = <ls_subproc_by_lvl_proc>-subprocess_id ] ).
+
+          LOOP AT lt_control INTO DATA(ls_aux) WHERE subprocess_id EQ <ls_subproc_by_lvl_proc>-subprocess_id.
+
+            APPEND INITIAL LINE TO lt_data ASSIGNING FIELD-SYMBOL(<lfs_data>).
+            <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+            <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+            <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+            <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+            <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+            <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+            <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+            <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+            <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+            <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+            <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+            <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+            <lfs_data>-zdesc_indi     = ls_aux-descr.
+            <lfs_data>-zcontrol_rel     = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                    control_id    = ls_aux-control_id ]-control_id.
+            <lfs_data>-control_txt    = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                    control_id    = ls_aux-control_id ]-descr.
+
+
+          ENDLOOP.
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+        ELSE.
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+        ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+    " Se informan 3 niveles de procesos
+  ELSEIF lv_proc_id_lvl_3 IS NOT INITIAL.
+
+    " Recorremos todos los resultados y vamos rellenando las tablas
+    " para filtrar la selección
+    LOOP AT lt_subproc_by_lvl_proc ASSIGNING <ls_subproc_by_lvl_proc>
+          WHERE process1_id EQ lv_proc_id_lvl_1
+            AND process2_id EQ lv_proc_id_lvl_2
+            AND process3_id EQ lv_proc_id_lvl_3.
+      " Si tiene subproceso
+      IF <ls_subproc_by_lvl_proc>-subprocess_id IS NOT INITIAL.
+
+        " Buscamos si tiene control asociado
+        IF line_exists( lt_control[ subprocess_id = <ls_subproc_by_lvl_proc>-subprocess_id ] ).
+
+          LOOP AT lt_control INTO ls_aux WHERE subprocess_id EQ <ls_subproc_by_lvl_proc>-subprocess_id.
+
+
+            APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+            <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+            <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+            <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+            <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+            <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+            <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+            <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+            <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+            <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+            <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+            <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+            <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+            <lfs_data>-zcontrol_rel     = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                    control_id    = ls_aux-control_id ]-control_id.
+            <lfs_data>-control_txt    = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                    control_id    = ls_aux-control_id ]-descr.
+
+
+
+
+          ENDLOOP.
+
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+        ELSE.
+
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+        ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+    " Se informan 2 niveles de procesos
+  ELSEIF lv_proc_id_lvl_2 IS NOT INITIAL.
+
+    " Recorremos todos los resultados y vamos rellenando las tablas
+    " para filtrar la selección
+    LOOP AT lt_subproc_by_lvl_proc ASSIGNING <ls_subproc_by_lvl_proc>
+          WHERE process1_id EQ lv_proc_id_lvl_1
+            AND process2_id EQ lv_proc_id_lvl_2.
+      " Si tiene subproceso
+      IF <ls_subproc_by_lvl_proc>-subprocess_id IS NOT INITIAL.
+
+        " Buscamos si tiene control asociado
+        IF line_exists( lt_control[ subprocess_id = <ls_subproc_by_lvl_proc>-subprocess_id ] ).
+
+          LOOP AT lt_control INTO ls_aux WHERE subprocess_id EQ <ls_subproc_by_lvl_proc>-subprocess_id.
+
+
+            APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+            <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+            <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+            <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+            <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+            <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+            <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+            <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+            <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+            <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+            <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+            <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+            <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+            <lfs_data>-zcontrol_rel     = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                    control_id    = ls_aux-control_id ]-control_id.
+            <lfs_data>-control_txt    = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                    control_id    = ls_aux-control_id ]-descr.
+
+
+          ENDLOOP.
+
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+        ELSE.
+
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+        ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+    " Se informa solo el proceso de nivel 1
+  ELSEIF lv_proc_id_lvl_1 IS NOT INITIAL.
+
+    " Recorremos todos los resultados y vamos rellenando las tablas
+    " para filtrar la selección
+    LOOP AT lt_subproc_by_lvl_proc ASSIGNING <ls_subproc_by_lvl_proc>
+          WHERE process1_id EQ lv_proc_id_lvl_1.
+
+      " Si tiene subproceso
+      IF <ls_subproc_by_lvl_proc>-subprocess_id IS NOT INITIAL.
+
+        " Buscamos si tiene control asociado
+        IF line_exists( lt_control[ subprocess_id = <ls_subproc_by_lvl_proc>-subprocess_id ] ).
+
+          LOOP AT lt_control INTO ls_aux WHERE subprocess_id EQ <ls_subproc_by_lvl_proc>-subprocess_id.
+
+            APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+            <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+            <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+            <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+            <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+            <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+            <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+            <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+            <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+            <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+            <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+            <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+            <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+            <lfs_data>-zcontrol_rel     = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                    control_id    = ls_aux-control_id ]-control_id.
+            <lfs_data>-control_txt    = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                    control_id    = ls_aux-control_id ]-descr.
+
+
+
+          ENDLOOP.
+
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+        ELSE.
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+        ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+  ELSEIF lv_subproc_id IS NOT INITIAL.
+
+    " Recorremos todos los resultados y vamos rellenando las tablas
+    " para filtrar la selección
+    LOOP AT lt_subproc_by_lvl_proc ASSIGNING <ls_subproc_by_lvl_proc>
+        WHERE subprocess_id EQ lv_subproc_id.
+
+      " Buscamos si tiene control asociado
+      IF line_exists( lt_control[ subprocess_id = <ls_subproc_by_lvl_proc>-subprocess_id ] ).
+
+        LOOP AT lt_control INTO ls_aux WHERE subprocess_id EQ <ls_subproc_by_lvl_proc>-subprocess_id.
+
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zcontrol_rel     = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                  control_id    = ls_aux-control_id ]-control_id.
+          <lfs_data>-control_txt    = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                  control_id    = ls_aux-control_id ]-descr.
+
+
+
+        ENDLOOP.
+
+
+        APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+        <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+        <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+        <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+        <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+        <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+        <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+        <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+        <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+        <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+        <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+        <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+        <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+      ELSE.
+
+        APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+        <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+        <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+        <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+        <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+        <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+        <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+        <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+        <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+        <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+        <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+        <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+        <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+      ENDIF.
+
+    ENDLOOP.
+
+  ELSE.
+
+    " Recorremos todos los resultados y vamos rellenando las tablas
+    " para filtrar la selección
+    LOOP AT lt_subproc_by_lvl_proc ASSIGNING <ls_subproc_by_lvl_proc>.
+
+      " Buscamos si tiene control asociado
+      IF line_exists( lt_control[ subprocess_id = <ls_subproc_by_lvl_proc>-subprocess_id ] ).
+
+        LOOP AT lt_control INTO ls_aux WHERE subprocess_id EQ <ls_subproc_by_lvl_proc>-subprocess_id.
+
+
+          APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+          <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+          <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+          <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+          <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+          <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+          <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+          <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+          <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+          <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+          <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+          <lfs_data>-zcontrol_rel     = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                  control_id    = ls_aux-control_id ]-control_id.
+          <lfs_data>-control_txt    = lt_control[ subprocess_id = ls_aux-subprocess_id
+                                                  control_id    = ls_aux-control_id ]-descr.
+
+        ENDLOOP.
+
+        APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+        <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+        <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+        <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+        <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+        <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+        <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+        <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+        <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+        <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+        <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+        <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+        <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+
+      ELSE.
+
+        APPEND INITIAL LINE TO lt_data ASSIGNING <lfs_data>.
+        <lfs_data>-zproc_n1_id    = <ls_subproc_by_lvl_proc>-process1_id.
+        <lfs_data>-zproc_n1_txt   = <ls_subproc_by_lvl_proc>-process1_text.
+        <lfs_data>-zproc_n2_id    = <ls_subproc_by_lvl_proc>-process2_id.
+        <lfs_data>-zproc_n2_txt   = <ls_subproc_by_lvl_proc>-process2_text.
+        <lfs_data>-zproc_n3_id    = <ls_subproc_by_lvl_proc>-process3_id.
+        <lfs_data>-zproc_n3_txt   = <ls_subproc_by_lvl_proc>-process3_text.
+        <lfs_data>-zproc_n4_id    = <ls_subproc_by_lvl_proc>-process4_id.
+        <lfs_data>-zproc_n4_txt   = <ls_subproc_by_lvl_proc>-process4_text.
+        <lfs_data>-subprocess_id  = <ls_subproc_by_lvl_proc>-subprocess_id.
+        <lfs_data>-subprocess_txt = <ls_subproc_by_lvl_proc>-subprocess_title.
+        <lfs_data>-zsubproc_id    = <ls_subproc_by_lvl_proc>-subprocess_id.
+        <lfs_data>-zsubproc_txt   = <ls_subproc_by_lvl_proc>-subprocess_title.
+
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDIF.
+
+
+  CALL METHOD lo_amdp->get_kci_cir
+    EXPORTING
+      im_client     = sy-mandt
+      it_kci        = lt_kci
+      im_period     = lv_last_day
+      im_period_old = lv_last_day_ant
+    IMPORTING
+      im_kci        = DATA(lt_kci_pro).
+
+  IF lt_kci_pro IS NOT INITIAL.
+
+    SORT lt_kci_pro BY kci_id.
+
+    DATA(lt_kci_pro_eval) = lt_kci_pro[].
+    DATA(lt_kci_pro_resp) = lt_kci_pro[].
+
+*        DATA lv_desc TYPE string.
+    DATA lv_desc_final TYPE string.
+    TYPES: BEGIN OF ltys_desc,
+             kci_id TYPE hrp1002-objid,
+           END OF ltys_desc.
+    DATA lt_kci_aux    TYPE STANDARD TABLE OF ltys_desc.
+
+    lt_kci_aux = CORRESPONDING #( lt_kci ).
+*INI DGL - Incidencia informe KCIs descripciones caducadas 09/07/2024
+*    SELECT  a~objid, b~tabseqnr, b~tline
+    SELECT  a~objid, b~tabseqnr, a~begda, a~endda, b~tline, a~tabnr
+*FIN DGL - Incidencia informe KCIs descripciones caducadas 09/07/2024
+     FROM hrp1002 AS a
+     INNER JOIN hrt1002 AS b ON a~tabnr EQ b~tabnr
+      FOR ALL ENTRIES IN @lt_kci_aux
+     WHERE a~objid EQ @lt_kci_aux-kci_id
+     AND a~otype EQ 'Z5'
+      INTO TABLE @DATA(lt_desc).
+*INI DGL - Incidencia informe KCIs descripciones caducadas 09/07/2024
+*    SORT lt_desc BY objid ASCENDING tabseqnr ASCENDING.
+    SORT lt_desc BY objid ASCENDING tabseqnr ASCENDING begda DESCENDING endda DESCENDING.
+
+*    DELETE ADJACENT DUPLICATES FROM lt_kci_pro COMPARING kci_id.
+    DELETE ADJACENT DUPLICATES FROM lt_desc COMPARING objid tabseqnr.
+*FIN DGL - Incidencia informe KCIs descripciones caducadas 09/07/2024
+    " Sacamos los responsables
+    SORT lt_kci_pro_resp BY zcontrol_rel zresp_control.
+    DELETE ADJACENT DUPLICATES FROM lt_kci_pro_resp COMPARING zcontrol_rel zresp_control.
+
+    LOOP AT lt_kci_pro_resp INTO DATA(ls_kci_pro_resp).
+
+      IF NOT line_exists( lt_resp[ id_control = ls_kci_pro_resp-zcontrol_rel ] ).
+
+        APPEND INITIAL LINE TO lt_resp ASSIGNING FIELD-SYMBOL(<lfs_resp>).
+        <lfs_resp>-id_control = ls_kci_pro_resp-zcontrol_rel.
+        <lfs_resp>-resp = REDUCE #( INIT lv_resp TYPE grfn_text
+                          FOR  ls_control_aux IN lt_kci_pro_resp
+                          WHERE ( zcontrol_rel = ls_kci_pro_resp-zcontrol_rel )
+                          NEXT lv_resp = COND #( WHEN lv_resp IS INITIAL
+                                                 THEN ls_control_aux-zresp_control
+                                                 ELSE lv_resp && ',' && ls_control_aux-zresp_control ) ).
+
+      ENDIF.
+
+    ENDLOOP.
+
+    LOOP AT lt_kci INTO DATA(ls_kci).
+
+      ls_alv_kci-zid_kci = ls_kci-kci_id.
+      ls_alv_kci-zid_risk = ls_kci-control_id.
+
+      DATA lv_numero TYPE p LENGTH 16 DECIMALS 2.
+
+      READ TABLE lt_kci_pro ASSIGNING FIELD-SYMBOL(<fs_kci_pro>) WITH KEY kci_id = ls_kci-kci_id.
+      IF sy-subrc EQ 0.
+        MOVE-CORRESPONDING <fs_kci_pro> TO ls_alv_kci.
+
+        lv_numero = <fs_kci_pro>-zvalor_num_eur.
+        WRITE lv_numero TO ls_alv_kci-zvalor_num_eur CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zvalor_num_n.
+        WRITE lv_numero TO ls_alv_kci-zvalor_num_n CURRENCY 'EUR'.
+
+        MOVE <fs_kci_pro>-zumb_min_n TO lv_numero.
+        WRITE lv_numero TO ls_alv_kci-zumb_min_n CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zumb_max_n.
+        WRITE lv_numero TO ls_alv_kci-zumb_max_n CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zumb_min_eur.
+        WRITE lv_numero TO ls_alv_kci-zumb_min_eur CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zumb_max_eur.
+        WRITE lv_numero TO ls_alv_kci-zumb_max_eur CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zvalor_den_n.
+        WRITE lv_numero TO ls_alv_kci-zvalor_den_n CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zvalor_den_eur.
+        WRITE lv_numero TO ls_alv_kci-zvalor_den_eur CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zresul_indi_n.
+        WRITE lv_numero TO ls_alv_kci-zresul_indi_n CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zresul_indi_eur.
+        WRITE lv_numero TO ls_alv_kci-zresul_indi_eur CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zvalor_num_eur_ant.
+        WRITE lv_numero TO ls_alv_kci-zvalor_num_eur_ant CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zvalor_den_eur_ant.
+        WRITE lv_numero TO ls_alv_kci-zvalor_den_eur_ant CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zresul_indi_eur_ant.
+        WRITE lv_numero TO ls_alv_kci-zresul_indi_eur_ant CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zvalor_den_n_ant.
+        WRITE lv_numero TO ls_alv_kci-zvalor_den_n_ant CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zvalor_num_n_ant.
+        WRITE lv_numero TO ls_alv_kci-zvalor_num_n_ant CURRENCY 'EUR'.
+
+        lv_numero = <fs_kci_pro>-zresul_indi_n_ant.
+        WRITE lv_numero TO ls_alv_kci-zresul_indi_n_ant CURRENCY 'EUR'.
+
+      ENDIF.
+
+      READ TABLE lt_data INTO DATA(ls_data) WITH KEY zcontrol_rel = <fs_kci_pro>-zcontrol_rel.
+      IF sy-subrc EQ 0.
+
+        ls_alv_kci-zproc_n1_id      = ls_data-zproc_n1_id.
+        ls_alv_kci-zproc_n1_txt     = ls_data-zproc_n1_txt.
+        ls_alv_kci-zproc_n2_id      = ls_data-zproc_n2_id.
+        ls_alv_kci-zproc_n2_txt     = ls_data-zproc_n2_txt.
+        ls_alv_kci-zproc_n3_id      = ls_data-zproc_n3_id.
+        ls_alv_kci-zproc_n3_txt     = ls_data-zproc_n3_txt.
+        ls_alv_kci-zproc_n4_id      = ls_data-zproc_n4_id.
+        ls_alv_kci-zproc_n4_txt     = ls_data-zproc_n4_txt.
+        ls_alv_kci-zsubproc_id      = ls_data-zsubproc_id.
+        ls_alv_kci-zsubproc_txt     = ls_data-zsubproc_txt.
+        ls_alv_kci-zyear_act        = lv_anyo.
+        ls_alv_kci-zperiod_act      = ls_periodo-periodo.
+        ls_alv_kci-zyear_ant        = lv_anyo_ant.
+        ls_alv_kci-zperiod_ant      = ls_periodo_ant-periodo.
+*        ls_alv_kci-zamb_control     = <fs_kci_pro>-zamb_control.
+*        ls_alv_kci-zamb_control_ant = <fs_kci_pro>-zamb_control_ant.
+
+        ls_alv_kci-zdesc_indi   = REDUCE #( INIT lv_desc TYPE string
+                          FOR  ls_desc IN lt_desc
+                          WHERE ( objid = ls_kci-kci_id )
+                          NEXT lv_desc = COND #( WHEN lv_desc IS INITIAL
+                                                 THEN ls_desc-tline
+                                                 ELSE lv_desc && ' ' && ls_desc-tline ) ).
+
+        ls_alv_kci-zdesc_indi = replace( val   = ls_alv_kci-zdesc_indi
+                                         regex = cl_abap_char_utilities=>horizontal_tab
+                                         with  = ''
+                                         occ   = 0 ).
+
+        ls_alv_kci-znom_indi    = <fs_kci_pro>-znom_indi.
+*        ls_alv_kci-zid_kci      = <fs_kci_pro>-kci_id.
+
+        ls_alv_kci-zestado            = VALUE #( lt_dom_status[ domvalue_l = <fs_kci_pro>-zestado            " Estado
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+* INI MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+        ls_alv_kci-zpublicado           = VALUE #( lt_publicado[ domvalue_l = <fs_kci_pro>-zpublicado         " Publicado
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+        IF  <fs_kci_pro>-zvisible_ci IS NOT INITIAL.
+          ls_alv_kci-zvisible_ci         = 'Si'.        " Visible CI
+        ELSE.
+          ls_alv_kci-zvisible_ci         = 'No' .        " Visible CI
+        ENDIF.
+
+
+* FIN MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+
+        ls_alv_kci-zclase_indi        = VALUE #( lt_clas_indi[ domvalue_l = <fs_kci_pro>-zclase_indi         " Clase Indicador
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-zdimen_indi        = VALUE #( lt_dim_indi[ domvalue_l = <fs_kci_pro>-zdimen_indi          " Dimension Indicador
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+        IF <fs_kci_pro>-zdimen_indi EQ 01.
+          " EUROS
+          CLEAR:
+          <fs_kci_pro>-zvalor_num_eur,
+          <fs_kci_pro>-zvalor_den_eur,
+          <fs_kci_pro>-zresul_indi_eur,
+          <fs_kci_pro>-ztend_ind_eur,
+          <fs_kci_pro>-zresul_eva_eur,
+          <fs_kci_pro>-zumb_min_eur,
+          <fs_kci_pro>-zumb_max_eur,
+          <fs_kci_pro>-zvalor_num_eur_ant,
+          <fs_kci_pro>-zvalor_den_eur_ant,
+          <fs_kci_pro>-zresul_indi_eur_ant,
+
+          ls_alv_kci-zvalor_num_eur,
+          ls_alv_kci-zvalor_den_eur,
+          ls_alv_kci-zresul_indi_eur,
+          ls_alv_kci-ztend_ind_eur,
+          ls_alv_kci-zumb_min_eur,
+          ls_alv_kci-zumb_max_eur,
+          ls_alv_kci-zresul_eva_eur,
+          ls_alv_kci-zvalor_num_eur_ant,
+          ls_alv_kci-zresul_indi_eur_ant,
+          ls_alv_kci-zvalor_den_eur_ant.
+
+        ELSEIF <fs_kci_pro>-zdimen_indi EQ 02.
+          " NUMEROS
+          CLEAR:
+          <fs_kci_pro>-zresul_eva_n,
+          <fs_kci_pro>-zvalor_num_n,
+          <fs_kci_pro>-zvalor_den_n,
+          <fs_kci_pro>-zresul_indi_n,
+          <fs_kci_pro>-ztend_ind_n,
+          <fs_kci_pro>-zumb_min_n,
+          <fs_kci_pro>-zumb_max_n,
+          <fs_kci_pro>-zvalor_den_n_ant,
+          <fs_kci_pro>-zvalor_num_n_ant,
+          <fs_kci_pro>-zresul_indi_n_ant,
+
+          ls_alv_kci-zvalor_num_n,
+          ls_alv_kci-zvalor_den_n,
+          ls_alv_kci-zresul_indi_n,
+          ls_alv_kci-ztend_ind_n,
+          ls_alv_kci-zumb_min_n,
+          ls_alv_kci-ztend_ind_n,
+          ls_alv_kci-zumb_max_n,
+          ls_alv_kci-zvalor_den_n_ant,
+          ls_alv_kci-zvalor_num_n_ant,
+          ls_alv_kci-zresul_indi_n_ant.
+
+        ENDIF.
+
+        ls_alv_kci-ztipo_umbral       = VALUE #( lt_tipo_umbral[ domvalue_l = <fs_kci_pro>-ztipo_umbral      " Tipo Umbral
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-ztend_ind_n        = VALUE #( lt_tend_indic[ domvalue_l = <fs_kci_pro>-ztend_ind_n        " Tendencia indicador n
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-ztend_ind_eur      = VALUE #( lt_tend_indic[ domvalue_l = <fs_kci_pro>-ztend_ind_eur      " Tendencia indicador eur
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-ztend_ind_n_ant    = VALUE #( lt_tend_indic[ domvalue_l = <fs_kci_pro>-ztend_ind_n_ant    " Tendencia indicador n anterior
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-ztend_ind_eur_ant  = VALUE #( lt_tend_indic[ domvalue_l = <fs_kci_pro>-ztend_ind_eur_ant  " Tendencia indicador eur anterior
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-zresul_eva_n       = VALUE #( lt_result_eva[ domvalue_l = <fs_kci_pro>-zresul_eva_n       " Resultado evaluación N
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-zresul_eva_eur     = VALUE #( lt_result_eva[ domvalue_l = <fs_kci_pro>-zresul_eva_eur     " Resultado evaluación EUR
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-zresul_eva_n_ant   = VALUE #( lt_result_eva[ domvalue_l = <fs_kci_pro>-zresul_eva_n_ant   " Resultado evaluación N anterior
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-zresul_eva_eur_ant = VALUE #( lt_result_eva[ domvalue_l = <fs_kci_pro>-zresul_eva_eur_ant " Resultado evaluación EUR anterior
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+        ls_alv_kci-zamb_control       = VALUE #( lt_valor_ambiente[ domvalue_l = <fs_kci_pro>-zamb_control     " Ambiente de control
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+* INI MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+        ls_alv_kci-zres_amb_control     = <fs_kci_pro>-zres_amb_control.   " Resultado Ambiente de control
+        ls_alv_kci-zval_amb_control     = <fs_kci_pro>-zval_amb_control.   " Valor Ambiente de control
+* FIN MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+
+        ls_alv_kci-zamb_control_ant   = VALUE #( lt_valor_ambiente[ domvalue_l = <fs_kci_pro>-zamb_control_ant " Ambiente de control anterior
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+* INI MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+        ls_alv_kci-zres_amb_control_ant     = <fs_kci_pro>-zres_amb_control_ant.   " Resultado Ambiente de control anterior
+        ls_alv_kci-zval_amb_control_ant     = <fs_kci_pro>-zval_amb_control_ant.   " Valor Ambiente de control anterior
+* FIN MCR - PPM100531913 - Nuevos campos informes CIR 06/09/2024
+
+
+        ls_alv_kci-zfrec_medida       = VALUE #( lt_dom_fecuencia[ domvalue_l = <fs_kci_pro>-zfrec_medida    " Frecuencia medida
+                                                       ddlanguage = sy-langu ]-ddtext OPTIONAL ).
+
+* INI JAGM 25.04.2023 - Incidencia Visibilidad TODOS los KCIs/KRIs(solo debe ver los suyos)
+      ELSE.
+        CONTINUE.
+* FIN JAGM 25.04.2023 - Incidencia Visibilidad TODOS los KCIs/KRIs(solo debe ver los suyos)
+
+      ENDIF.
+
+      READ TABLE lt_resp INTO DATA(ls_resp) WITH KEY id_control = <fs_kci_pro>-zcontrol_rel.
+      IF sy-subrc EQ 0.
+        DATA lv_control_rel TYPE string.
+
+        ls_alv_kci-zresp_control = ls_resp-resp.
+
+        SELECT SINGLE stext
+          FROM hrp1000
+          INTO lv_control_rel
+          WHERE objid = <fs_kci_pro>-zcontrol_rel
+          AND otype = 'P2'.
+
+        ls_alv_kci-zcontrol_rel = lv_control_rel.
+
+        CLEAR lv_control_rel.
+
+
+      ENDIF.
+      APPEND ls_alv_kci TO lt_alv_kci.
+      CLEAR ls_alv_kci.
+    ENDLOOP.
+
+    IF lr_kci IS NOT INITIAL.
+
+      DELETE lt_alv_kci WHERE zid_kci NOT IN lr_kci.
+
+    ENDIF.
+
+    IF lr_control IS NOT INITIAL.
+
+      DELETE lt_alv_kci WHERE zid_risk NOT IN lr_control.
+
+    ENDIF.
+
+
+
+    SORT lt_alv_kci BY     zproc_n1_id    ASCENDING
+                           zproc_n2_id    ASCENDING
+                           zproc_n3_id    ASCENDING
+                           zproc_n4_id    ASCENDING.
+
+    DATA(lt_data_informe) = VALUE wd_comp_controller->elements_data( ).
+    DATA(lo_data_informe) = wd_context->get_child_node( wd_this->wdctx_data ).
+
+    lt_data_informe = CORRESPONDING #( lt_alv_kci ).
+
+    lo_data_informe->invalidate( ).
+
+    IF lt_data_informe IS NOT INITIAL.
+
+      lo_data_informe->bind_table( EXPORTING new_items = lt_data_informe ).
+
+    ENDIF.
+
+  ENDIF.
+
+ENDMETHOD.
+
+method ONACTIONTOGGLE_SELECTION .
+
+    wd_comp_controller->show_selection( CONV #( wdevent->get_char( 'CHECKED' ) ) ).
+
+endmethod.
+
+endclass.
+
