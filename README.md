@@ -4265,3 +4265,90 @@ endmethod.
 
 endclass.
 
+HOYYYY
+METHOD zcheck_riesgo_rop .
+
+  " Declaración de constantes y variables
+  CONSTANTS: lc_profile_rop TYPE string VALUE 'ROP'.
+
+  DATA: lo_cgroup     TYPE REF TO cl_grrm_api_crgroup,
+        ls_read_only  TYPE wd_this->element_read_only,
+        lv_valid_to   TYPE wd_this->element_read_only-valid_to,
+        lv_riesgo_rop TYPE boolean,
+        lv_risk_rop   TYPE boolean.
+
+  DATA(ls_data) = VALUE wd_this->element_data( ).
+
+  lv_riesgo_rop = abap_true.
+  lv_risk_rop   = abap_false.
+
+*Inicio WCMG 16.12.2024- Incidencia- RTC - Risk Oportunities   Assert Create
+* Verificamos si estamos en creación de un riesgo nuevo
+  IF wd_this->ms_risk_data-risk_category_id IS INITIAL.
+    CLEAR lv_riesgo_rop.
+  ELSE.
+*Fin WCMG 16.12.2024- Incidencia- RTC - Risk Oportunities   Assert Create
+
+*Obtenemos el ID de la categoría de riesgo desde el atributo MS_RISK_DATA
+    lo_cgroup ?= wd_this->mo_session->get( iv_object_id = wd_this->ms_risk_data-risk_category_id ).
+    lo_cgroup->if_grrm_api_crgroup~retrieve(
+      EXPORTING
+        iv_editable = abap_false
+      IMPORTING
+        es_data = DATA(ls_cgroup_data)
+    ).
+    " Si el perfil de riesgo es 'ROP', entramos en la condición
+    IF ls_cgroup_data-profile_id NE lc_profile_rop.
+      CLEAR lv_riesgo_rop.
+    ENDIF.
+  ENDIF.
+
+  IF wd_this->ms_status-status_id NE 'IG019'.
+    CLEAR lv_riesgo_rop.
+  ENDIF.
+
+*La instancia de riesgo tiene asignados eventos de perdida
+  DATA(lv_objid) = cl_grfn_api_ident=>get_objid( i_object_id = wd_this->mv_object_id  ).
+
+  SELECT COUNT( * )
+    FROM grrmobrisk
+    INTO @DATA(ls_grrmobrisk)
+    WHERE risk_id = @lv_objid
+    AND unassigned_flag = @abap_false.
+
+  IF sy-subrc EQ 0.
+    lv_risk_rop = abap_true.
+  ENDIF.
+
+*La instancia de riesgo tiene asignados puntos débiles
+  SELECT COUNT( * )
+    FROM grfncaseis
+   INTO @DATA(ls_grfncaseis)
+   WHERE link_id = @wd_this->mv_object_id.
+
+  IF sy-subrc EQ 0.
+    lv_risk_rop = abap_true.
+* INI MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+
+* FIN MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+  ENDIF.
+
+*La instancia de riesgo tiene asignados KRIs
+* INI MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+  " Código antiguo:
+*  SELECT COUNT( * )
+  " Código nuevo:
+    SELECT COUNT( * )
+* FIN MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+     FROM hrp1001
+    INTO @DATA(ls_hrp1001)
+    WHERE objid  EQ @lv_objid
+      AND otype  EQ 'OF'
+      AND sclas  EQ 'O5'
+      AND begda  LE @sy-datum
+      AND endda  GE @sy-datum.
+
+  IF sy-subrc EQ 0.
+    lv_risk_rop = abap_true.
+  ENDIF.
+
