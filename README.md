@@ -4359,3 +4359,42 @@ Así que se se solicita flexibilidad para poder eliminar una instancia de riesgo
 
 Queremos que sea posible eliminar el RO4 con los puntos débiles en estado cerrado manteniendo el control y el aviso actual de las instancias de riesgo que no permita el borrado si hay palancas pero que estas puedan moverse o eliminarse en el caso de que estén "cerradas".
 
+SELECT case_guid
+* FIN MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+   FROM grfncaseis
+* INI MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+  " Código antiguo:
+*   INTO @DATA(ls_grfncaseis)
+    "Código nuevo:
+   INTO TABLE @DATA(lt_grfncaseis)
+* FIN MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+   WHERE link_id = @wd_this->mv_object_id.
+
+* INI MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+* Creamos un rango con los case_guid iguales a los objnr
+  lr_objnr = VALUE #(
+    FOR <fs_status> IN lt_grfncaseis
+   ( sign = 'I' option = 'EQ' low = <fs_status>-case_guid )
+).
+* Seleccionamos el estado del punto debil, en función del rango con el caseguid.
+  SELECT stat
+    FROM crm_jest
+    INTO TABLE @DATA(lt_status_pd)
+    WHERE objnr IN @lr_objnr AND
+      crm_jest~inact EQ @space. " Está activo
+
+  SORT lt_status_pd BY stat.
+  DELETE ADJACENT DUPLICATES FROM lt_status_pd COMPARING stat.
+* FIN MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+
+  IF sy-subrc EQ 0.
+    lv_risk_rop = abap_true.
+
+* INI MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+    LOOP AT lt_status_pd ASSIGNING FIELD-SYMBOL(<fs_status_pd>) WHERE stat NE 'IG007'.
+      
+    ENDLOOP.
+* FIN MOD ROP - Mejora en la flexibilidad de las palancas en RO4. Concretamente PD 13.11.2025 / U01ACE45.
+
+  ENDIF.
+
