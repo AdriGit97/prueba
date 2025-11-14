@@ -4352,3 +4352,10 @@ METHOD zcheck_riesgo_rop .
     lv_risk_rop = abap_true.
   ENDIF.
 
+  ---
+  Actualmente no podemos eliminar instancias de riesgo RO4 con palancas pero tampoco podemos mover PD cerrados.
+ Esto nos imposibilita eliminar una instancia de riesgo con PD haciendo que estas instancias de riesgo permanezcan eternamente en SAP.
+Así que se se solicita flexibilidad para poder eliminar una instancia de riesgo y que no quede atascada en el caso que los puntos débiles estén en estado Cerrado. 
+
+Queremos que sea posible eliminar el RO4 con los puntos débiles en estado cerrado manteniendo el control y el aviso actual de las instancias de riesgo que no permita el borrado si hay palancas pero que estas puedan moverse o eliminarse en el caso de que estén "cerradas".
+
